@@ -1,6 +1,236 @@
 import type { ParsedInvoice, ParseResult, ImportError } from '@/types'
 import { normalizeNip } from '@/lib/utils'
 
+// ============================================
+// Fakturownia XML Parser
+// ============================================
+
+/**
+ * Extract text content from an XML element
+ */
+function getXmlText(element: Element, tagName: string): string | null {
+  const el = element.getElementsByTagName(tagName)[0]
+  if (!el) return null
+
+  // Check for nil attribute
+  const nilAttr = el.getAttribute('nil')
+  if (nilAttr === 'true') return null
+
+  return el.textContent?.trim() || null
+}
+
+/**
+ * Parse amount from XML (decimal type)
+ */
+function parseXmlAmount(element: Element, tagName: string): number | null {
+  const text = getXmlText(element, tagName)
+  if (!text) return null
+
+  const amount = parseFloat(text)
+  return isNaN(amount) ? null : Math.round(amount * 100) / 100
+}
+
+/**
+ * Parse Fakturownia XML export
+ * Extracts invoices with buyer-mass-payment-code (subaccount)
+ */
+export function parseFakturowniaXML(content: string): ParseResult<ParsedInvoice> {
+  const errors: ImportError[] = []
+  const warnings: string[] = []
+  const data: ParsedInvoice[] = []
+
+  try {
+    // Parse XML
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(content, 'text/xml')
+
+    // Check for parse errors
+    const parseError = doc.querySelector('parsererror')
+    if (parseError) {
+      return {
+        success: false,
+        data: [],
+        errors: [{ row: 0, field: 'xml', message: 'Nieprawidłowy format XML' }],
+        warnings: [],
+      }
+    }
+
+    // Get all invoice elements
+    const invoices = doc.getElementsByTagName('invoice')
+
+    if (invoices.length === 0) {
+      return {
+        success: false,
+        data: [],
+        errors: [{ row: 0, field: 'invoices', message: 'Nie znaleziono faktur w pliku XML' }],
+        warnings: [],
+      }
+    }
+
+    for (let i = 0; i < invoices.length; i++) {
+      const invoice = invoices[i]
+      const rowNumber = i + 1
+
+      // Extract invoice number
+      const invoiceNumber = getXmlText(invoice, 'number')
+      if (!invoiceNumber) {
+        errors.push({
+          row: rowNumber,
+          field: 'number',
+          message: 'Brak numeru faktury',
+        })
+        continue
+      }
+
+      // Extract dates
+      const issueDate = getXmlText(invoice, 'issue-date') || getXmlText(invoice, 'sell-date')
+      if (!issueDate) {
+        errors.push({
+          row: rowNumber,
+          field: 'issue_date',
+          message: 'Brak daty wystawienia',
+        })
+        continue
+      }
+
+      const dueDate = getXmlText(invoice, 'payment-to')
+      if (!dueDate) {
+        errors.push({
+          row: rowNumber,
+          field: 'due_date',
+          message: 'Brak terminu płatności',
+        })
+        continue
+      }
+
+      // Extract amounts
+      const netAmount = parseXmlAmount(invoice, 'price-net')
+      const grossAmount = parseXmlAmount(invoice, 'price-gross')
+
+      if (netAmount === null) {
+        errors.push({
+          row: rowNumber,
+          field: 'net_amount',
+          message: 'Nieprawidłowa kwota netto',
+        })
+        continue
+      }
+
+      if (grossAmount === null) {
+        errors.push({
+          row: rowNumber,
+          field: 'gross_amount',
+          message: 'Nieprawidłowa kwota brutto',
+        })
+        continue
+      }
+
+      // Extract currency
+      const currency = getXmlText(invoice, 'currency')?.toUpperCase() || 'PLN'
+
+      // Extract buyer info
+      const buyerName = getXmlText(invoice, 'buyer-name')
+      if (!buyerName) {
+        errors.push({
+          row: rowNumber,
+          field: 'buyer_name',
+          message: 'Brak nazwy nabywcy',
+        })
+        continue
+      }
+
+      const rawNip = getXmlText(invoice, 'buyer-tax-no')
+      const buyerNip = rawNip ? normalizeNip(rawNip) : null
+
+      // Extract subaccount (buyer-mass-payment-code)
+      const buyerSubaccount = getXmlText(invoice, 'buyer-mass-payment-code')
+
+      // Validate NIP if provided
+      if (rawNip && (!buyerNip || buyerNip.length !== 10)) {
+        warnings.push(`Faktura ${invoiceNumber}: NIP "${rawNip}" może być nieprawidłowy`)
+      }
+
+      // Validate date logic
+      if (new Date(issueDate) > new Date(dueDate)) {
+        warnings.push(`Faktura ${invoiceNumber}: Termin płatności jest wcześniejszy niż data wystawienia`)
+      }
+
+      data.push({
+        invoice_number: invoiceNumber,
+        issue_date: issueDate,
+        due_date: dueDate,
+        net_amount: netAmount,
+        gross_amount: grossAmount,
+        currency,
+        buyer_name: buyerName,
+        buyer_nip: buyerNip,
+        buyer_subaccount: buyerSubaccount,
+      })
+    }
+
+    return {
+      success: errors.length === 0,
+      data,
+      errors,
+      warnings,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      data: [],
+      errors: [{ row: 0, field: 'xml', message: `Błąd parsowania XML: ${error}` }],
+      warnings: [],
+    }
+  }
+}
+
+/**
+ * Validate Fakturownia XML file
+ */
+export function validateFakturowniaXML(content: string): {
+  valid: boolean
+  error?: string
+  rowCount?: number
+} {
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(content, 'text/xml')
+
+    const parseError = doc.querySelector('parsererror')
+    if (parseError) {
+      return { valid: false, error: 'Nieprawidłowy format XML' }
+    }
+
+    const invoices = doc.getElementsByTagName('invoice')
+    if (invoices.length === 0) {
+      return { valid: false, error: 'Nie znaleziono faktur w pliku' }
+    }
+
+    return {
+      valid: true,
+      rowCount: invoices.length,
+    }
+  } catch {
+    return { valid: false, error: 'Błąd podczas analizy pliku' }
+  }
+}
+
+/**
+ * Detect if content is Fakturownia XML format
+ */
+export function isFakturowniaXML(content: string): boolean {
+  const trimmed = content.trim()
+  return (
+    trimmed.startsWith('<?xml') &&
+    trimmed.includes('<invoices') &&
+    trimmed.includes('<invoice>')
+  )
+}
+
+// ============================================
+// Fakturownia CSV Parser
+// ============================================
+
 // Expected column headers in Fakturownia export
 const EXPECTED_HEADERS = {
   invoiceNumber: ['numer', 'nr faktury', 'numer faktury'],
@@ -290,6 +520,7 @@ export function parseFakturowniaCSV(content: string): ParseResult<ParsedInvoice>
       currency,
       buyer_name: buyerName,
       buyer_nip: buyerNip,
+      buyer_subaccount: null, // CSV format doesn't include subaccount
     })
   }
 

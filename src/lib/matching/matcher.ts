@@ -10,6 +10,41 @@ import {
 } from './string-utils'
 
 /**
+ * Normalize account number for comparison
+ * Removes spaces, dashes, and leading zeros
+ */
+function normalizeAccountNumber(account: string | null): string | null {
+  if (!account) return null
+  return account.replace(/[\s-]/g, '').replace(/^0+/, '').trim()
+}
+
+/**
+ * Calculate subaccount match score
+ * If buyer's subaccount matches the payment's receiver subaccount, it's 100% match
+ */
+function calculateSubaccountScore(
+  buyerSubaccount: string | null,
+  paymentReceiverSubaccount: string | null | undefined
+): number {
+  if (!buyerSubaccount || !paymentReceiverSubaccount) return 0
+
+  const normalizedInvoice = normalizeAccountNumber(buyerSubaccount)
+  const normalizedPayment = normalizeAccountNumber(paymentReceiverSubaccount)
+
+  if (!normalizedInvoice || !normalizedPayment) return 0
+
+  // Exact match
+  if (normalizedInvoice === normalizedPayment) return 1.0
+
+  // Check if one contains the other (for partial account numbers)
+  if (normalizedInvoice.endsWith(normalizedPayment) || normalizedPayment.endsWith(normalizedInvoice)) {
+    return 0.9
+  }
+
+  return 0
+}
+
+/**
  * Calculate amount match score
  * Exact match = 1.0, within 1% = 0.9, within 5% = 0.7
  */
@@ -129,11 +164,38 @@ function calculateDateScore(dueDate: string, paymentDate: string): number {
 
 /**
  * Calculate overall match confidence between an invoice and payment
+ * Extended Payment type to include sender_subaccount
  */
 export function calculateMatchConfidence(
   invoice: Invoice,
-  payment: Payment
+  payment: Payment & { sender_subaccount?: string | null }
 ): MatchResult {
+  // Calculate subaccount score first (highest priority)
+  const subaccountScore = calculateSubaccountScore(
+    invoice.buyer_subaccount,
+    payment.sender_subaccount
+  )
+
+  // If subaccount matches perfectly, it's a guaranteed match
+  if (subaccountScore >= 1.0) {
+    const breakdown: MatchBreakdown = {
+      subaccount: subaccountScore,
+      amount: calculateAmountScore(invoice.gross_amount, payment.amount),
+      invoiceNumber: 0,
+      name: 0,
+      nip: 0,
+      date: 0,
+    }
+
+    return {
+      invoiceId: invoice.id,
+      paymentId: payment.id,
+      confidence: 1.0,
+      breakdown,
+      reasons: ['Dopasowanie po subkoncie (100% pewności)', `Kwota: ${payment.amount.toFixed(2)} PLN`],
+    }
+  }
+
   // Calculate individual scores
   const amountScore = calculateAmountScore(invoice.gross_amount, payment.amount)
   const invoiceNumberScore = calculateInvoiceNumberScore(
@@ -145,6 +207,7 @@ export function calculateMatchConfidence(
   const dateScore = calculateDateScore(invoice.due_date, payment.transaction_date)
 
   const breakdown: MatchBreakdown = {
+    subaccount: subaccountScore,
     amount: amountScore,
     invoiceNumber: invoiceNumberScore,
     name: nameScore,
@@ -152,16 +215,25 @@ export function calculateMatchConfidence(
     date: dateScore,
   }
 
-  // Calculate weighted confidence
-  const confidence =
+  // Calculate weighted confidence (without subaccount since it didn't match fully)
+  let confidence =
     amountScore * MATCHING_WEIGHTS.AMOUNT +
     invoiceNumberScore * MATCHING_WEIGHTS.INVOICE_NUMBER +
     nameScore * MATCHING_WEIGHTS.NAME +
     nipScore * MATCHING_WEIGHTS.NIP +
     dateScore * MATCHING_WEIGHTS.DATE
 
+  // If there's a partial subaccount match, boost confidence
+  if (subaccountScore > 0) {
+    confidence = Math.min(1.0, confidence + subaccountScore * 0.3)
+  }
+
   // Generate human-readable reasons
   const reasons: string[] = []
+
+  if (subaccountScore > 0 && subaccountScore < 1.0) {
+    reasons.push('Częściowe dopasowanie subkonta')
+  }
 
   if (amountScore >= 0.9) {
     reasons.push(`Kwota zgodna: ${payment.amount.toFixed(2)} PLN`)
@@ -200,10 +272,11 @@ export function calculateMatchConfidence(
 
 /**
  * Find all potential matches for invoices and payments
+ * Extended Payment type to include sender_subaccount
  */
 export function findMatches(
   invoices: Invoice[],
-  payments: Payment[]
+  payments: (Payment & { sender_subaccount?: string | null })[]
 ): {
   autoMatches: MatchResult[]
   suggestions: MatchResult[]

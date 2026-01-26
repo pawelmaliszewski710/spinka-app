@@ -223,7 +223,7 @@ export function parseMT940(content: string): ParseResult<ParsedPayment> {
 }
 
 // ============================================
-// mBank CSV Parser
+// mBank CSV Parser (standard format)
 // ============================================
 export function parseMBankCSV(content: string): ParseResult<ParsedPayment> {
   const errors: ImportError[] = []
@@ -283,6 +283,146 @@ export function parseMBankCSV(content: string): ParseResult<ParsedPayment> {
       title,
       reference: generateReference(transactionDate, amount, senderName),
     })
+  }
+
+  return {
+    success: errors.length === 0,
+    data,
+    errors,
+    warnings,
+  }
+}
+
+// ============================================
+// mBank Corporate CSV Parser (extended format)
+// ============================================
+export function parseMBankCorporateCSV(content: string): ParseResult<ParsedPayment> {
+  const errors: ImportError[] = []
+  const warnings: string[] = []
+  const data: ParsedPayment[] = []
+
+  const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter((l) => l.trim())
+
+  if (lines.length < 2) {
+    return {
+      success: false,
+      data: [],
+      errors: [{ row: 0, field: 'file', message: 'Plik jest pusty lub zawiera tylko nagłówki' }],
+      warnings: [],
+    }
+  }
+
+  // Parse header to find column indices
+  const headerLine = lines[0]
+  const headers = parseCSVLine(headerLine, ';').map((h) => h.toLowerCase().trim())
+
+  // Find column indices (handle encoding issues with Polish characters)
+  const findColumn = (names: string[]): number => {
+    for (const name of names) {
+      const idx = headers.findIndex((h) => h.includes(name))
+      if (idx !== -1) return idx
+    }
+    return -1
+  }
+
+  const amountCol = findColumn(['kwota'])
+  const dateCol = findColumn(['data ksi', 'data księgowania'])
+  const senderNameCol = findColumn(['kontrahent'])
+  const senderAccountCol = findColumn(['rachunek kontrahenta'])
+  const titleCol = findColumn(['opis transakcji'])
+  const sideCol = findColumn(['strona transakcji'])
+  const currencyCol = findColumn(['waluta'])
+  const referenceCol = findColumn(['id transakcji', 'referencje'])
+  // "Numer rachunku" - the account that received the payment (our subaccount)
+  const receiverAccountCol = findColumn(['numer rachunku'])
+
+  if (amountCol === -1 || dateCol === -1) {
+    return {
+      success: false,
+      data: [],
+      errors: [{ row: 0, field: 'format', message: 'Nie znaleziono wymaganych kolumn (Kwota, Data księgowania)' }],
+      warnings: [],
+    }
+  }
+
+  // Process data rows
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+
+    const rowNumber = i + 1
+    const values = parseCSVLine(line, ';')
+
+    // Check if this is a credit (incoming payment) - "Uznania"
+    if (sideCol !== -1) {
+      const side = values[sideCol]?.toLowerCase() || ''
+      if (side.includes('obci') || side.includes('debit')) {
+        // Skip debits (outgoing payments)
+        continue
+      }
+    }
+
+    // Parse amount
+    const amount = parsePolishAmount(values[amountCol])
+    if (amount === null || amount <= 0) {
+      // Skip outgoing payments (negative amounts) or invalid
+      continue
+    }
+
+    // Parse date (DD/MM/YYYY format)
+    const transactionDate = parseDate(values[dateCol])
+    if (!transactionDate) {
+      errors.push({
+        row: rowNumber,
+        field: 'transaction_date',
+        message: 'Nieprawidłowy format daty',
+        value: values[dateCol],
+      })
+      continue
+    }
+
+    // Extract sender info - clean up the formatting
+    let senderName = senderNameCol !== -1 ? values[senderNameCol]?.trim() : 'Nieznany'
+    // Remove extra spaces and clean up company names
+    senderName = senderName?.replace(/\s+/g, ' ').trim() || 'Nieznany'
+
+    let senderAccount = senderAccountCol !== -1 ? values[senderAccountCol]?.trim() : null
+    // Remove quotes from account number
+    senderAccount = senderAccount?.replace(/'/g, '').trim() || null
+
+    // Extract title/description
+    let title = titleCol !== -1 ? values[titleCol]?.trim() : 'Brak tytułu'
+    title = title?.replace(/\s+/g, ' ').trim() || 'Brak tytułu'
+
+    // Currency
+    const currency = currencyCol !== -1 ? values[currencyCol]?.trim().toUpperCase() : 'PLN'
+
+    // Reference
+    let reference = referenceCol !== -1 ? values[referenceCol]?.trim() : null
+    if (!reference) {
+      reference = generateReference(transactionDate, amount, senderName)
+    }
+
+    // Extract receiver subaccount (the account that received the payment)
+    // This is used for matching with invoice buyer_subaccount
+    let receiverSubaccount = receiverAccountCol !== -1 ? values[receiverAccountCol]?.trim() : null
+    // Remove quotes from account number
+    receiverSubaccount = receiverSubaccount?.replace(/'/g, '').trim() || null
+
+    data.push({
+      transaction_date: transactionDate,
+      amount,
+      currency: currency || 'PLN',
+      sender_name: senderName,
+      sender_account: senderAccount,
+      title,
+      reference,
+      sender_subaccount: receiverSubaccount, // The subaccount that received the payment
+    })
+  }
+
+  if (data.length === 0 && errors.length === 0) {
+    warnings.push('Nie znaleziono transakcji przychodzących (uznań) w pliku')
   }
 
   return {
@@ -368,21 +508,28 @@ export function parseINGCSV(content: string): ParseResult<ParsedPayment> {
 // ============================================
 // Auto-detect bank format
 // ============================================
-export function detectBankFormat(content: string): ImportSource | 'unknown' {
-  const firstLines = content.split('\n').slice(0, 5).join('\n')
+export function detectBankFormat(content: string): ImportSource | 'mbank_corporate' | 'unknown' {
+  const firstLines = content.split('\n').slice(0, 5).join('\n').toLowerCase()
 
   // MT940 format detection
   if (firstLines.includes(':20:') && firstLines.includes(':25:')) {
     return 'mt940'
   }
 
-  // mBank CSV detection
-  if (firstLines.includes('#Data operacji') || firstLines.includes('#Opis operacji')) {
+  // mBank Corporate CSV detection (extended format with ERP codes)
+  if (firstLines.includes('kod transakcji erp') ||
+      firstLines.includes('kod transakcji mbank') ||
+      (firstLines.includes('strona transakcji') && firstLines.includes('kontrahent'))) {
+    return 'mbank_corporate'
+  }
+
+  // mBank standard CSV detection
+  if (firstLines.includes('#data operacji') || firstLines.includes('#opis operacji')) {
     return 'mbank'
   }
 
   // ING CSV detection
-  if (firstLines.includes('Data transakcji') && firstLines.includes('Dane kontrahenta')) {
+  if (firstLines.includes('data transakcji') && firstLines.includes('dane kontrahenta')) {
     return 'ing'
   }
 
@@ -393,7 +540,7 @@ export function detectBankFormat(content: string): ImportSource | 'unknown' {
 // Universal payment parser
 // ============================================
 export function parsePayments(content: string, format?: ImportSource): ParseResult<ParsedPayment> & {
-  detectedFormat: ImportSource | 'unknown'
+  detectedFormat: ImportSource | 'mbank_corporate' | 'unknown'
 } {
   const detectedFormat = format || detectBankFormat(content)
 
@@ -402,6 +549,8 @@ export function parsePayments(content: string, format?: ImportSource): ParseResu
       return { ...parseMT940(content), detectedFormat }
     case 'mbank':
       return { ...parseMBankCSV(content), detectedFormat }
+    case 'mbank_corporate':
+      return { ...parseMBankCorporateCSV(content), detectedFormat }
     case 'ing':
       return { ...parseINGCSV(content), detectedFormat }
     default:
@@ -412,7 +561,7 @@ export function parsePayments(content: string, format?: ImportSource): ParseResu
           {
             row: 0,
             field: 'format',
-            message: 'Nie rozpoznano formatu pliku. Wspierane formaty: MT940, mBank CSV, ING CSV',
+            message: 'Nie rozpoznano formatu pliku. Wspierane formaty: MT940, mBank CSV, mBank Corporate, ING CSV',
           },
         ],
         warnings: [],

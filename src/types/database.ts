@@ -4,7 +4,7 @@
 
 export type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'partial'
 export type MatchType = 'auto' | 'manual'
-export type ImportSource = 'fakturownia' | 'mt940' | 'mbank' | 'ing'
+export type ImportSource = 'fakturownia' | 'mt940' | 'mbank' | 'mbank_corporate' | 'ing'
 
 export type Json =
   | string
@@ -29,6 +29,7 @@ export type Database = {
           currency: string
           buyer_name: string
           buyer_nip: string | null
+          buyer_subaccount: string | null
           payment_status: PaymentStatus
           created_at: string
           updated_at: string
@@ -44,6 +45,7 @@ export type Database = {
           currency?: string
           buyer_name: string
           buyer_nip?: string | null
+          buyer_subaccount?: string | null
           payment_status?: PaymentStatus
           created_at?: string
           updated_at?: string
@@ -59,6 +61,7 @@ export type Database = {
           currency?: string
           buyer_name?: string
           buyer_nip?: string | null
+          buyer_subaccount?: string | null
           payment_status?: PaymentStatus
           created_at?: string
           updated_at?: string
@@ -74,6 +77,7 @@ export type Database = {
           currency: string
           sender_name: string
           sender_account: string | null
+          sender_subaccount: string | null
           title: string
           reference: string | null
           source: ImportSource
@@ -88,6 +92,7 @@ export type Database = {
           currency?: string
           sender_name: string
           sender_account?: string | null
+          sender_subaccount?: string | null
           title: string
           reference?: string | null
           source: ImportSource
@@ -102,6 +107,7 @@ export type Database = {
           currency?: string
           sender_name?: string
           sender_account?: string | null
+          sender_subaccount?: string | null
           title?: string
           reference?: string | null
           source?: ImportSource
@@ -182,6 +188,7 @@ export type Database = {
           currency: string | null
           sender_name: string | null
           sender_account: string | null
+          sender_subaccount: string | null
           title: string | null
           reference: string | null
           source: ImportSource | null

@@ -9,12 +9,14 @@ export const CONFIDENCE_THRESHOLDS = {
 } as const
 
 // Matching weights
+// Note: When subaccount matches (1.0), it provides 100% confidence regardless of other factors
 export const MATCHING_WEIGHTS = {
-  AMOUNT: 0.4,
+  SUBACCOUNT: 1.0, // Subaccount match gives instant 100% confidence
+  AMOUNT: 0.35,
   INVOICE_NUMBER: 0.3,
   NAME: 0.15,
   NIP: 0.1,
-  DATE: 0.05,
+  DATE: 0.1,
 } as const
 
 // Re-export types from database for backward compatibility

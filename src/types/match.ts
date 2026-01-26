@@ -29,6 +29,7 @@ export interface MatchBreakdown {
   name: number // 0-1 score for name similarity
   nip: number // 0-1 score for NIP match
   date: number // 0-1 score for date proximity
+  subaccount: number // 0-1 score for subaccount match (highest priority)
 }
 
 export interface MatchSuggestion {

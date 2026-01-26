@@ -5,7 +5,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { FileDropzone } from './FileDropzone'
-import { parseFakturowniaCSV, validateFakturowniaFile } from '@/lib/parsers'
+import {
+  parseFakturowniaCSV,
+  validateFakturowniaFile,
+  parseFakturowniaXML,
+  validateFakturowniaXML,
+  isFakturowniaXML,
+} from '@/lib/parsers'
 import type { ParsedInvoice, ImportError } from '@/types'
 import { supabase } from '@/lib/supabase'
 
@@ -33,27 +39,56 @@ export function InvoiceImport(): React.JSX.Element {
     try {
       const content = await selectedFile.text()
 
-      // Validate file format first
-      const validation = validateFakturowniaFile(content)
-      if (!validation.valid) {
-        toast.error(validation.error || 'Nieprawidłowy format pliku')
-        setFile(null)
-        setIsProcessing(false)
-        return
-      }
+      // Detect if file is XML or CSV
+      const isXML = isFakturowniaXML(content)
 
-      // Parse the file
-      const result = parseFakturowniaCSV(content)
-      setPreview(result.data)
-      setParseErrors(result.errors)
-      setWarnings(result.warnings)
+      if (isXML) {
+        // Parse XML format
+        const validation = validateFakturowniaXML(content)
+        if (!validation.valid) {
+          toast.error(validation.error || 'Nieprawidłowy format pliku XML')
+          setFile(null)
+          setIsProcessing(false)
+          return
+        }
 
-      if (result.data.length > 0) {
-        setStep('preview')
-        toast.success(`Rozpoznano ${result.data.length} faktur`)
+        const result = parseFakturowniaXML(content)
+        setPreview(result.data)
+        setParseErrors(result.errors)
+        setWarnings(result.warnings)
+
+        if (result.data.length > 0) {
+          setStep('preview')
+          const withSubaccount = result.data.filter((i) => i.buyer_subaccount).length
+          toast.success(
+            `Rozpoznano ${result.data.length} faktur (XML)${withSubaccount > 0 ? `, ${withSubaccount} z subkontami` : ''}`
+          )
+        } else {
+          toast.error('Nie znaleziono faktur w pliku XML')
+          setFile(null)
+        }
       } else {
-        toast.error('Nie znaleziono faktur w pliku')
-        setFile(null)
+        // Parse CSV format
+        const validation = validateFakturowniaFile(content)
+        if (!validation.valid) {
+          toast.error(validation.error || 'Nieprawidłowy format pliku')
+          setFile(null)
+          setIsProcessing(false)
+          return
+        }
+
+        const result = parseFakturowniaCSV(content)
+        setPreview(result.data)
+        setParseErrors(result.errors)
+        setWarnings(result.warnings)
+
+        if (result.data.length > 0) {
+          setStep('preview')
+          toast.success(`Rozpoznano ${result.data.length} faktur (CSV)`)
+        } else {
+          toast.error('Nie znaleziono faktur w pliku')
+          setFile(null)
+        }
       }
     } catch (error) {
       console.error('Error parsing file:', error)
@@ -100,6 +135,7 @@ export function InvoiceImport(): React.JSX.Element {
         currency: inv.currency,
         buyer_name: inv.buyer_name,
         buyer_nip: inv.buyer_nip,
+        buyer_subaccount: inv.buyer_subaccount,
         payment_status: 'pending' as const,
       }))
 
@@ -161,18 +197,19 @@ export function InvoiceImport(): React.JSX.Element {
           Import faktur z Fakturownia.pl
         </CardTitle>
         <CardDescription>
-          Zaimportuj faktury z eksportu CSV z serwisu Fakturownia.pl
+          Zaimportuj faktury z eksportu CSV lub XML z serwisu Fakturownia.pl.
+          Format XML zawiera subkonta do automatycznego dopasowania płatności.
         </CardDescription>
       </CardHeader>
       <CardContent>
         {step === 'select' && (
           <FileDropzone
-            accept=".csv"
+            accept=".csv,.xml"
             onFileSelect={handleFileSelect}
             selectedFile={file}
             onClear={handleClear}
-            label="Wybierz plik CSV z Fakturownia.pl"
-            hint="Plik powinien zawierać kolumny: Numer, Data wystawienia, Termin płatności, Netto, Brutto, Waluta, Nabywca, NIP nabywcy"
+            label="Wybierz plik CSV lub XML z Fakturownia.pl"
+            hint="CSV: kolumny Numer, Data wystawienia, Termin płatności, Netto, Brutto, Waluta, Nabywca, NIP. XML: eksport z API (zawiera subkonta)"
             disabled={isProcessing}
           />
         )}
@@ -239,6 +276,7 @@ export function InvoiceImport(): React.JSX.Element {
                     <th className="px-3 py-2 text-left">Nabywca</th>
                     <th className="px-3 py-2 text-right">Kwota brutto</th>
                     <th className="px-3 py-2 text-left">Termin</th>
+                    <th className="px-3 py-2 text-left">Subkonto</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -252,6 +290,15 @@ export function InvoiceImport(): React.JSX.Element {
                         {invoice.gross_amount.toFixed(2)} {invoice.currency}
                       </td>
                       <td className="px-3 py-2">{invoice.due_date}</td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {invoice.buyer_subaccount ? (
+                          <span className="text-green-600" title={invoice.buyer_subaccount}>
+                            ...{invoice.buyer_subaccount.slice(-10)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

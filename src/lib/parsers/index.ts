@@ -1,4 +1,10 @@
-export { parseFakturowniaCSV, validateFakturowniaFile } from './fakturownia-parser'
+export {
+  parseFakturowniaCSV,
+  validateFakturowniaFile,
+  parseFakturowniaXML,
+  validateFakturowniaXML,
+  isFakturowniaXML,
+} from './fakturownia-parser'
 export {
   parseMT940,
   parseMBankCSV,

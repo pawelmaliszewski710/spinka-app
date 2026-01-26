@@ -10,6 +10,7 @@ export interface ParsedInvoice {
   currency: string
   buyer_name: string
   buyer_nip: string | null
+  buyer_subaccount: string | null
 }
 
 export interface ParsedPayment {
@@ -20,6 +21,7 @@ export interface ParsedPayment {
   sender_account: string | null
   title: string
   reference: string | null
+  sender_subaccount?: string | null // Subaccount extracted from sender_account for matching
 }
 
 // Import error details

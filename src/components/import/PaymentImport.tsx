@@ -18,10 +18,11 @@ interface ImportResult {
   errors: ImportError[]
 }
 
-const FORMAT_LABELS: Record<ImportSource | 'unknown', string> = {
+const FORMAT_LABELS: Record<ImportSource | 'mbank_corporate' | 'unknown', string> = {
   fakturownia: 'Fakturownia',
   mt940: 'MT940',
   mbank: 'mBank CSV',
+  mbank_corporate: 'mBank Corporate',
   ing: 'ING CSV',
   unknown: 'Nieznany',
 }
@@ -32,7 +33,7 @@ export function PaymentImport(): React.JSX.Element {
   const [preview, setPreview] = useState<ParsedPayment[]>([])
   const [parseErrors, setParseErrors] = useState<ImportError[]>([])
   const [warnings, setWarnings] = useState<string[]>([])
-  const [detectedFormat, setDetectedFormat] = useState<ImportSource | 'unknown'>('unknown')
+  const [detectedFormat, setDetectedFormat] = useState<ImportSource | 'mbank_corporate' | 'unknown'>('unknown')
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
 
@@ -113,9 +114,10 @@ export function PaymentImport(): React.JSX.Element {
         currency: payment.currency,
         sender_name: payment.sender_name,
         sender_account: payment.sender_account,
+        sender_subaccount: payment.sender_subaccount,
         title: payment.title,
         reference: payment.reference,
-        source: sourceType as 'mt940' | 'mbank' | 'ing' | 'fakturownia',
+        source: sourceType as 'mt940' | 'mbank' | 'mbank_corporate' | 'ing' | 'fakturownia',
         source_file: file?.name || null,
       }))
 
@@ -269,6 +271,7 @@ export function PaymentImport(): React.JSX.Element {
                     <th className="px-3 py-2 text-left">Nadawca</th>
                     <th className="px-3 py-2 text-left">Tytuł</th>
                     <th className="px-3 py-2 text-right">Kwota</th>
+                    <th className="px-3 py-2 text-left">Subkonto</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -283,6 +286,15 @@ export function PaymentImport(): React.JSX.Element {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-green-600">
                         +{payment.amount.toFixed(2)} {payment.currency}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {payment.sender_subaccount ? (
+                          <span className="text-blue-600" title={payment.sender_subaccount}>
+                            ...{payment.sender_subaccount.slice(-10)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
