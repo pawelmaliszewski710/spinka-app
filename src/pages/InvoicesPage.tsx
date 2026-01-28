@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { toast } from 'sonner'
 import { PageContainer } from '@/components/layout'
 import { InvoiceImport } from '@/components/import'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,10 +13,30 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { FileText, Search, Plus, RefreshCw, Loader2 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { FileText, Search, Plus, RefreshCw, Loader2, Trash2, Copy, CheckCircle2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Invoice } from '@/types'
+import { BlurFade } from '@/components/ui/blur-fade'
+import { NumberTicker } from '@/components/ui/number-ticker'
 
 type PaymentStatusBadge = {
   label: string
@@ -34,6 +55,9 @@ export function InvoicesPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [showImport, setShowImport] = useState(false)
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [copiedField, setCopiedField] = useState<string | null>(null)
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true)
@@ -60,59 +84,163 @@ export function InvoicesPage(): React.JSX.Element {
     fetchInvoices()
   }, [fetchInvoices])
 
+  const handleDeleteAllInvoices = async () => {
+    setIsDeleting(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        toast.error('Sesja wygasła. Zaloguj się ponownie.')
+        return
+      }
+
+      // First delete all matches for user's invoices
+      const { error: matchError } = await supabase
+        .from('matches')
+        .delete()
+        .eq('user_id', user.id)
+
+      if (matchError) {
+        console.error('Error deleting matches:', matchError)
+        toast.error('Błąd podczas usuwania dopasowań')
+        return
+      }
+
+      // Then delete all invoices
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('user_id', user.id)
+
+      if (error) {
+        console.error('Error deleting invoices:', error)
+        toast.error('Błąd podczas usuwania faktur')
+        return
+      }
+
+      toast.success('Wszystkie faktury zostały usunięte')
+      setInvoices([])
+    } catch (error) {
+      console.error('Error deleting invoices:', error)
+      toast.error('Nieoczekiwany błąd podczas usuwania')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const copyToClipboard = async (text: string, fieldName: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedField(fieldName)
+      setTimeout(() => setCopiedField(null), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
   const filteredInvoices = invoices.filter((invoice) => {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
     return (
       invoice.invoice_number.toLowerCase().includes(query) ||
       invoice.buyer_name.toLowerCase().includes(query) ||
-      (invoice.buyer_nip && invoice.buyer_nip.includes(query))
+      (invoice.buyer_nip && invoice.buyer_nip.includes(query)) ||
+      (invoice.seller_bank_account && invoice.seller_bank_account.includes(query))
     )
   })
+
+  const formatBankAccount = (account: string | null): string => {
+    if (!account) return '—'
+    // Remove spaces and format as XX XXXX XXXX XXXX XXXX XXXX XXXX
+    const clean = account.replace(/\s/g, '')
+    if (clean.length === 26) {
+      return `${clean.slice(0, 2)} ${clean.slice(2, 6)} ${clean.slice(6, 10)} ${clean.slice(10, 14)} ${clean.slice(14, 18)} ${clean.slice(18, 22)} ${clean.slice(22, 26)}`
+    }
+    return account
+  }
 
   return (
     <PageContainer>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Faktury</h1>
-            <p className="text-muted-foreground">Zarządzaj fakturami przychodowymi</p>
-          </div>
+        <BlurFade delay={0.1}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">Faktury</h1>
+              <p className="text-muted-foreground">Zarządzaj fakturami przychodowymi</p>
+            </div>
           <div className="flex gap-2">
+            {invoices.length > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={isDeleting}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Usuń wszystkie
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Czy na pewno chcesz usunąć wszystkie faktury?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Ta operacja usunie {invoices.length} faktur oraz wszystkie powiązane dopasowania.
+                      Tej akcji nie można cofnąć.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDeleteAllInvoices}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {isDeleting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Usuwanie...
+                        </>
+                      ) : (
+                        'Usuń wszystkie'
+                      )}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             <Button variant="outline" size="sm" onClick={fetchInvoices} disabled={loading}>
               <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Odśwież
             </Button>
             <Button size="sm" onClick={() => setShowImport(!showImport)}>
               <Plus className="mr-2 h-4 w-4" />
-              {showImport ? 'Ukryj import' : 'Importuj CSV'}
+              {showImport ? 'Ukryj import' : 'Importuj'}
             </Button>
           </div>
         </div>
+        </BlurFade>
 
         {showImport && (
-          <InvoiceImport />
+          <BlurFade delay={0.15}>
+            <InvoiceImport />
+          </BlurFade>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Lista faktur
-            </CardTitle>
-            <CardDescription>
-              {invoices.length > 0
-                ? `Łącznie ${invoices.length} faktur`
-                : 'Zaimportuj faktury aby rozpocząć'}
-            </CardDescription>
-          </CardHeader>
+        <BlurFade delay={0.2}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Lista faktur
+              </CardTitle>
+              <CardDescription>
+                {invoices.length > 0
+                  ? <>Łącznie <NumberTicker value={invoices.length} className="inline text-muted-foreground" /> faktur</>
+                  : 'Zaimportuj faktury aby rozpocząć'}
+              </CardDescription>
+            </CardHeader>
           <CardContent>
             {invoices.length > 0 && (
               <div className="mb-4">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Szukaj po numerze, nabywcy lub NIP..."
+                    placeholder="Szukaj po numerze, nabywcy, NIP lub koncie..."
                     value={searchQuery}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
                     className="pl-10"
@@ -126,17 +254,19 @@ export function InvoicesPage(): React.JSX.Element {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : invoices.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <FileText className="h-12 w-12 text-muted-foreground/50" />
-                <h3 className="mt-4 text-lg font-medium">Brak faktur</h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Zaimportuj faktury z pliku CSV aby rozpocząć
-                </p>
-                <Button className="mt-4" onClick={() => setShowImport(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Importuj faktury
-                </Button>
-              </div>
+              <BlurFade delay={0.1}>
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <FileText className="h-12 w-12 text-muted-foreground/50" />
+                  <h3 className="mt-4 text-lg font-medium">Brak faktur</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Zaimportuj faktury z pliku CSV lub XML aby rozpocząć
+                  </p>
+                  <Button className="mt-4" onClick={() => setShowImport(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Importuj faktury
+                  </Button>
+                </div>
+              </BlurFade>
             ) : (
               <div className="rounded-lg border">
                 <Table>
@@ -146,13 +276,14 @@ export function InvoicesPage(): React.JSX.Element {
                       <TableHead>Nabywca</TableHead>
                       <TableHead className="text-right">Kwota brutto</TableHead>
                       <TableHead>Termin płatności</TableHead>
+                      <TableHead>Konto sprzedawcy</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredInvoices.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground">
+                        <TableCell colSpan={6} className="text-center text-muted-foreground">
                           Brak faktur pasujących do wyszukiwania
                         </TableCell>
                       </TableRow>
@@ -160,8 +291,12 @@ export function InvoicesPage(): React.JSX.Element {
                       filteredInvoices.map((invoice) => {
                         const status = STATUS_BADGES[invoice.payment_status] || STATUS_BADGES.pending
                         return (
-                          <TableRow key={invoice.id}>
-                            <TableCell className="font-mono text-sm">
+                          <TableRow
+                            key={invoice.id}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => setSelectedInvoice(invoice)}
+                          >
+                            <TableCell className="font-mono text-sm font-medium text-primary">
                               {invoice.invoice_number}
                             </TableCell>
                             <TableCell>
@@ -178,6 +313,15 @@ export function InvoicesPage(): React.JSX.Element {
                               {formatCurrency(invoice.gross_amount, invoice.currency)}
                             </TableCell>
                             <TableCell>{formatDate(invoice.due_date)}</TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {invoice.seller_bank_account ? (
+                                <span title={formatBankAccount(invoice.seller_bank_account)}>
+                                  ...{invoice.seller_bank_account.replace(/\s/g, '').slice(-8)}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <span
                                 className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${status.className}`}
@@ -195,7 +339,184 @@ export function InvoicesPage(): React.JSX.Element {
             )}
           </CardContent>
         </Card>
+        </BlurFade>
       </div>
+
+      {/* Invoice Details Dialog */}
+      <Dialog open={!!selectedInvoice} onOpenChange={(open) => !open && setSelectedInvoice(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Szczegóły faktury
+            </DialogTitle>
+            <DialogDescription>
+              {selectedInvoice?.invoice_number}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedInvoice && (
+            <div className="space-y-6">
+              {/* Status badge */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Status:</span>
+                <span
+                  className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
+                    STATUS_BADGES[selectedInvoice.payment_status]?.className || STATUS_BADGES.pending.className
+                  }`}
+                >
+                  {STATUS_BADGES[selectedInvoice.payment_status]?.label || 'Oczekuje'}
+                </span>
+              </div>
+
+              {/* Main info grid */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-muted-foreground">Numer faktury</label>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-lg">{selectedInvoice.invoice_number}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => copyToClipboard(selectedInvoice.invoice_number, 'invoice_number')}
+                    >
+                      {copiedField === 'invoice_number' ? (
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-muted-foreground">Kwota brutto</label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold">
+                      {formatCurrency(selectedInvoice.gross_amount, selectedInvoice.currency)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => copyToClipboard(selectedInvoice.gross_amount.toFixed(2), 'gross_amount')}
+                    >
+                      {copiedField === 'gross_amount' ? (
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-muted-foreground">Kwota netto</label>
+                  <span className="block">{formatCurrency(selectedInvoice.net_amount, selectedInvoice.currency)}</span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-muted-foreground">Waluta</label>
+                  <span className="block">{selectedInvoice.currency}</span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-muted-foreground">Data wystawienia</label>
+                  <span className="block">{formatDate(selectedInvoice.issue_date)}</span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-muted-foreground">Termin płatności</label>
+                  <span className="block">{formatDate(selectedInvoice.due_date)}</span>
+                </div>
+              </div>
+
+              {/* Buyer info */}
+              <div className="rounded-lg border p-4">
+                <h4 className="mb-3 font-medium">Nabywca</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{selectedInvoice.buyer_name}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => copyToClipboard(selectedInvoice.buyer_name, 'buyer_name')}
+                    >
+                      {copiedField === 'buyer_name' ? (
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
+                  {selectedInvoice.buyer_nip && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">NIP:</span>
+                      <span className="font-mono">{selectedInvoice.buyer_nip}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => copyToClipboard(selectedInvoice.buyer_nip!, 'buyer_nip')}
+                      >
+                        {copiedField === 'buyer_nip' ? (
+                          <CheckCircle2 className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  {selectedInvoice.buyer_subaccount && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Subkonto nabywcy:</span>
+                      <span className="font-mono">{selectedInvoice.buyer_subaccount}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => copyToClipboard(selectedInvoice.buyer_subaccount!, 'buyer_subaccount')}
+                      >
+                        {copiedField === 'buyer_subaccount' ? (
+                          <CheckCircle2 className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Seller bank account */}
+              {selectedInvoice.seller_bank_account && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/30">
+                  <h4 className="mb-2 font-medium text-green-800 dark:text-green-300">Konto bankowe sprzedawcy (do dopasowania)</h4>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-lg text-green-700 dark:text-green-400">
+                      {formatBankAccount(selectedInvoice.seller_bank_account)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => copyToClipboard(selectedInvoice.seller_bank_account!.replace(/\s/g, ''), 'seller_bank_account')}
+                    >
+                      {copiedField === 'seller_bank_account' ? (
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Timestamps */}
+              <div className="border-t pt-4 text-xs text-muted-foreground">
+                <div>Utworzono: {formatDate(selectedInvoice.created_at)}</div>
+                <div>Zaktualizowano: {formatDate(selectedInvoice.updated_at)}</div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </PageContainer>
   )
 }

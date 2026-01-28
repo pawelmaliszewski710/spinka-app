@@ -8,6 +8,10 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle, Loader2 } from 'lucide-react'
+import { DotPattern } from '@/components/ui/dot-pattern'
+import { BlurFade } from '@/components/ui/blur-fade'
+import { ShineBorder } from '@/components/ui/shine-border'
+import { cn } from '@/lib/utils'
 
 export function LoginPage(): React.JSX.Element {
   const navigate = useNavigate()
@@ -33,74 +37,104 @@ export function LoginPage(): React.JSX.Element {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">InvoiceMatch</CardTitle>
-          <CardDescription>Zaloguj się do swojego konta</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  {error.message === 'Invalid login credentials'
-                    ? 'Nieprawidłowy email lub hasło'
-                    : error.message}
-                </AlertDescription>
-              </Alert>
-            )}
+    <div className="relative flex min-h-screen items-center justify-center bg-background px-4 overflow-hidden">
+      <DotPattern
+        className={cn(
+          "[mask-image:radial-gradient(400px_circle_at_center,white,transparent)]",
+          "absolute inset-0 h-full w-full"
+        )}
+      />
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="jan@example.com"
-                value={email}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                disabled={loading}
-              />
-            </div>
+      <BlurFade delay={0.2}>
+        <ShineBorder
+          className="w-full max-w-md"
+          color={["#3b82f6", "#8b5cf6", "#06b6d4"]}
+          borderRadius={16}
+          borderWidth={2}
+        >
+          <Card className="w-full border-0 bg-background/80 backdrop-blur-sm">
+            <CardHeader className="text-center">
+              <BlurFade delay={0.3}>
+                <CardTitle className="text-2xl font-bold">InvoiceMatch</CardTitle>
+              </BlurFade>
+              <BlurFade delay={0.4}>
+                <CardDescription>Zaloguj się do swojego konta</CardDescription>
+              </BlurFade>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {error && (
+                  <BlurFade delay={0}>
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        {error.message === 'Invalid login credentials'
+                          ? 'Nieprawidłowy email lub hasło'
+                          : error.message}
+                      </AlertDescription>
+                    </Alert>
+                  </BlurFade>
+                )}
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Hasło</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-                minLength={8}
-                disabled={loading}
-              />
-            </div>
+                <BlurFade delay={0.5}>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="jan@example.com"
+                      value={email}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+                      required
+                      autoComplete="email"
+                      disabled={loading}
+                    />
+                  </div>
+                </BlurFade>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Logowanie...
-                </>
-              ) : (
-                'Zaloguj się'
-              )}
-            </Button>
-          </form>
+                <BlurFade delay={0.6}>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Hasło</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                      minLength={8}
+                      disabled={loading}
+                    />
+                  </div>
+                </BlurFade>
 
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            Nie masz konta?{' '}
-            <Link to="/register" className="font-medium text-primary hover:underline">
-              Zarejestruj się
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+                <BlurFade delay={0.7}>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Logowanie...
+                      </>
+                    ) : (
+                      'Zaloguj się'
+                    )}
+                  </Button>
+                </BlurFade>
+              </form>
+
+              <BlurFade delay={0.8}>
+                <div className="mt-6 text-center text-sm text-muted-foreground">
+                  Nie masz konta?{' '}
+                  <Link to="/register" className="font-medium text-primary hover:underline">
+                    Zarejestruj się
+                  </Link>
+                </div>
+              </BlurFade>
+            </CardContent>
+          </Card>
+        </ShineBorder>
+      </BlurFade>
     </div>
   )
 }
