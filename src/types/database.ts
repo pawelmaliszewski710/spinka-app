@@ -2,9 +2,10 @@
 // Run: npx supabase gen types typescript > src/types/database.ts
 // to regenerate after schema changes
 
-export type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'partial'
+export type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'partial' | 'canceled'
 export type MatchType = 'auto' | 'manual'
-export type ImportSource = 'fakturownia' | 'mt940' | 'mbank' | 'mbank_corporate' | 'ing'
+export type ImportSource = 'fakturownia' | 'mt940' | 'mbank' | 'mbank_corporate' | 'mbank_sme' | 'ing' | 'pekao' | 'pko'
+export type AiProvider = 'openrouter' | 'openai' | 'anthropic'
 
 export type Json =
   | string
@@ -17,10 +18,41 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      companies: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          description: string | null
+          is_default: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          description?: string | null
+          is_default?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          description?: string | null
+          is_default?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       invoices: {
         Row: {
           id: string
           user_id: string
+          company_id: string
           invoice_number: string
           issue_date: string
           due_date: string
@@ -30,6 +62,9 @@ export type Database = {
           buyer_name: string
           buyer_nip: string | null
           buyer_subaccount: string | null
+          seller_bank_account: string | null
+          fakturownia_id: number | null
+          invoice_kind: string | null
           payment_status: PaymentStatus
           created_at: string
           updated_at: string
@@ -37,6 +72,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
+          company_id: string
           invoice_number: string
           issue_date: string
           due_date: string
@@ -46,6 +82,9 @@ export type Database = {
           buyer_name: string
           buyer_nip?: string | null
           buyer_subaccount?: string | null
+          seller_bank_account?: string | null
+          fakturownia_id?: number | null
+          invoice_kind?: string | null
           payment_status?: PaymentStatus
           created_at?: string
           updated_at?: string
@@ -53,6 +92,7 @@ export type Database = {
         Update: {
           id?: string
           user_id?: string
+          company_id?: string
           invoice_number?: string
           issue_date?: string
           due_date?: string
@@ -62,6 +102,9 @@ export type Database = {
           buyer_name?: string
           buyer_nip?: string | null
           buyer_subaccount?: string | null
+          seller_bank_account?: string | null
+          fakturownia_id?: number | null
+          invoice_kind?: string | null
           payment_status?: PaymentStatus
           created_at?: string
           updated_at?: string
@@ -72,6 +115,7 @@ export type Database = {
         Row: {
           id: string
           user_id: string
+          company_id: string
           transaction_date: string
           amount: number
           currency: string
@@ -79,6 +123,7 @@ export type Database = {
           sender_account: string | null
           sender_subaccount: string | null
           title: string
+          extended_title: string | null
           reference: string | null
           source: ImportSource
           source_file: string | null
@@ -87,6 +132,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
+          company_id: string
           transaction_date: string
           amount: number
           currency?: string
@@ -94,6 +140,7 @@ export type Database = {
           sender_account?: string | null
           sender_subaccount?: string | null
           title: string
+          extended_title?: string | null
           reference?: string | null
           source: ImportSource
           source_file?: string | null
@@ -102,6 +149,7 @@ export type Database = {
         Update: {
           id?: string
           user_id?: string
+          company_id?: string
           transaction_date?: string
           amount?: number
           currency?: string
@@ -109,6 +157,7 @@ export type Database = {
           sender_account?: string | null
           sender_subaccount?: string | null
           title?: string
+          extended_title?: string | null
           reference?: string | null
           source?: ImportSource
           source_file?: string | null
@@ -120,6 +169,7 @@ export type Database = {
         Row: {
           id: string
           user_id: string
+          company_id: string
           invoice_id: string
           payment_id: string
           confidence_score: number
@@ -130,6 +180,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
+          company_id: string
           invoice_id: string
           payment_id: string
           confidence_score: number
@@ -140,6 +191,7 @@ export type Database = {
         Update: {
           id?: string
           user_id?: string
+          company_id?: string
           invoice_id?: string
           payment_id?: string
           confidence_score?: number
@@ -149,11 +201,56 @@ export type Database = {
         }
         Relationships: []
       }
+      company_integrations: {
+        Row: {
+          id: string
+          user_id: string
+          company_id: string
+          fakturownia_enabled: boolean
+          fakturownia_subdomain: string | null
+          fakturownia_api_token_id: string | null
+          fakturownia_department_id: string | null
+          ai_enabled: boolean
+          ai_provider: string | null
+          ai_api_key_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          company_id: string
+          fakturownia_enabled?: boolean
+          fakturownia_subdomain?: string | null
+          fakturownia_api_token_id?: string | null
+          fakturownia_department_id?: string | null
+          ai_enabled?: boolean
+          ai_provider?: string | null
+          ai_api_key_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          company_id?: string
+          fakturownia_enabled?: boolean
+          fakturownia_subdomain?: string | null
+          fakturownia_api_token_id?: string | null
+          fakturownia_department_id?: string | null
+          ai_enabled?: boolean
+          ai_provider?: string | null
+          ai_api_key_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       v_dashboard_summary: {
         Row: {
-          user_id: string | null
+          company_id: string | null
           payment_status: PaymentStatus | null
           invoice_count: number | null
           total_amount: number | null
@@ -164,6 +261,7 @@ export type Database = {
         Row: {
           id: string | null
           user_id: string | null
+          company_id: string | null
           invoice_number: string | null
           issue_date: string | null
           due_date: string | null
@@ -172,6 +270,8 @@ export type Database = {
           currency: string | null
           buyer_name: string | null
           buyer_nip: string | null
+          buyer_subaccount: string | null
+          seller_bank_account: string | null
           payment_status: PaymentStatus | null
           created_at: string | null
           updated_at: string | null
@@ -183,6 +283,7 @@ export type Database = {
         Row: {
           id: string | null
           user_id: string | null
+          company_id: string | null
           transaction_date: string | null
           amount: number | null
           currency: string | null
@@ -190,6 +291,7 @@ export type Database = {
           sender_account: string | null
           sender_subaccount: string | null
           title: string | null
+          extended_title: string | null
           reference: string | null
           source: ImportSource | null
           source_file: string | null
@@ -199,7 +301,33 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      store_integration_secret: {
+        Args: {
+          p_secret: string
+          p_name: string
+          p_description?: string
+        }
+        Returns: string
+      }
+      update_integration_secret: {
+        Args: {
+          p_secret_id: string
+          p_new_secret: string
+        }
+        Returns: undefined
+      }
+      delete_integration_secret: {
+        Args: {
+          p_secret_id: string
+        }
+        Returns: undefined
+      }
+      get_decrypted_secret: {
+        Args: {
+          p_secret_id: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       payment_status: PaymentStatus
@@ -296,3 +424,11 @@ export type MatchUpdate = Database['public']['Tables']['matches']['Update']
 
 export type DashboardSummary = Database['public']['Views']['v_dashboard_summary']['Row']
 export type OverdueInvoice = Database['public']['Views']['v_overdue_invoices']['Row']
+
+export type Company = Database['public']['Tables']['companies']['Row']
+export type CompanyInsert = Database['public']['Tables']['companies']['Insert']
+export type CompanyUpdate = Database['public']['Tables']['companies']['Update']
+
+export type CompanyIntegration = Database['public']['Tables']['company_integrations']['Row']
+export type CompanyIntegrationInsert = Database['public']['Tables']['company_integrations']['Insert']
+export type CompanyIntegrationUpdate = Database['public']['Tables']['company_integrations']['Update']

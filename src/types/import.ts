@@ -11,6 +11,7 @@ export interface ParsedInvoice {
   buyer_name: string
   buyer_nip: string | null
   buyer_subaccount: string | null
+  seller_bank_account: string | null
 }
 
 export interface ParsedPayment {
@@ -20,6 +21,7 @@ export interface ParsedPayment {
   sender_name: string
   sender_account: string | null
   title: string
+  extended_title?: string | null // Full transaction description (Pełny opis transakcji)
   reference: string | null
   sender_subaccount?: string | null // Subaccount extracted from sender_account for matching
 }

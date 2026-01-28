@@ -4,7 +4,7 @@ export const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 // Matching algorithm thresholds
 export const CONFIDENCE_THRESHOLDS = {
   HIGH: 0.85, // Auto-match threshold
-  MEDIUM: 0.6, // Suggestion threshold
+  MEDIUM: 0.1, // Suggestion threshold (lowered to show more potential matches)
   LOW: 0.0, // No match
 } as const
 
@@ -12,8 +12,8 @@ export const CONFIDENCE_THRESHOLDS = {
 // Note: When subaccount matches (1.0), it provides 100% confidence regardless of other factors
 export const MATCHING_WEIGHTS = {
   SUBACCOUNT: 1.0, // Subaccount match gives instant 100% confidence
-  AMOUNT: 0.35,
-  INVOICE_NUMBER: 0.3,
+  AMOUNT: 0.30,
+  INVOICE_NUMBER: 0.35, // Increased - invoice number in title is reliable
   NAME: 0.15,
   NIP: 0.1,
   DATE: 0.1,

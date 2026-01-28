@@ -1,7 +1,11 @@
 export {
   calculateMatchConfidence,
   findMatches,
+  findMatchesExtended,
   getMatchQuality,
+  groupInvoicesByBuyerAndMonth,
+  findPaymentForInvoiceSum,
+  findBuyerPaymentSuggestions,
 } from './matcher'
 
 export {
@@ -11,4 +15,7 @@ export {
   extractNIP,
   normalizeNIP,
   compareCompanyNames,
+  extractSequenceNumber,
+  extractDatePart,
+  normalizeInvoiceNumberPadded,
 } from './string-utils'

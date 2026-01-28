@@ -9,6 +9,7 @@ import { parsePayments } from '@/lib/parsers'
 import type { ParsedPayment, ImportError } from '@/types'
 import type { ImportSource } from '@/lib/constants'
 import { supabase } from '@/lib/supabase'
+import { useCompany } from '@/contexts/CompanyContext'
 
 type ImportStep = 'select' | 'preview' | 'importing' | 'complete' | 'error'
 
@@ -18,22 +19,26 @@ interface ImportResult {
   errors: ImportError[]
 }
 
-const FORMAT_LABELS: Record<ImportSource | 'mbank_corporate' | 'unknown', string> = {
+const FORMAT_LABELS: Record<ImportSource | 'mbank_corporate' | 'mbank_sme' | 'pko' | 'unknown', string> = {
   fakturownia: 'Fakturownia',
   mt940: 'MT940',
   mbank: 'mBank CSV',
   mbank_corporate: 'mBank Corporate',
+  mbank_sme: 'mBank MŚP',
   ing: 'ING CSV',
+  pekao: 'Pekao SA',
+  pko: 'PKO BP',
   unknown: 'Nieznany',
 }
 
 export function PaymentImport(): React.JSX.Element {
+  const { currentCompany } = useCompany()
   const [step, setStep] = useState<ImportStep>('select')
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<ParsedPayment[]>([])
   const [parseErrors, setParseErrors] = useState<ImportError[]>([])
   const [warnings, setWarnings] = useState<string[]>([])
-  const [detectedFormat, setDetectedFormat] = useState<ImportSource | 'mbank_corporate' | 'unknown'>('unknown')
+  const [detectedFormat, setDetectedFormat] = useState<ImportSource | 'mbank_corporate' | 'mbank_sme' | 'pko' | 'unknown'>('unknown')
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
 
@@ -90,6 +95,11 @@ export function PaymentImport(): React.JSX.Element {
   }, [])
 
   const handleImport = useCallback(async () => {
+    if (!currentCompany) {
+      toast.error('Nie wybrano firmy')
+      return
+    }
+
     if (preview.length === 0) return
 
     setStep('importing')
@@ -105,10 +115,11 @@ export function PaymentImport(): React.JSX.Element {
         return
       }
 
-      // Prepare payments for insert
+      // Prepare payments for insert with company_id
       const sourceType = detectedFormat === 'unknown' ? 'mt940' : detectedFormat
       const paymentsToInsert = preview.map((payment) => ({
         user_id: user.id,
+        company_id: currentCompany.id,
         transaction_date: payment.transaction_date,
         amount: payment.amount,
         currency: payment.currency,
@@ -116,47 +127,25 @@ export function PaymentImport(): React.JSX.Element {
         sender_account: payment.sender_account,
         sender_subaccount: payment.sender_subaccount,
         title: payment.title,
+        extended_title: payment.extended_title || null,
         reference: payment.reference,
-        source: sourceType as 'mt940' | 'mbank' | 'mbank_corporate' | 'ing' | 'fakturownia',
+        source: sourceType as 'mt940' | 'mbank' | 'mbank_corporate' | 'mbank_sme' | 'ing' | 'pekao' | 'fakturownia',
         source_file: file?.name || null,
       }))
 
-      // Check for duplicates by reference
-      const references = paymentsToInsert
-        .map((p) => p.reference)
-        .filter((r): r is string => r !== null)
-
-      let existingReferences = new Set<string>()
-      if (references.length > 0) {
-        const { data: existingPayments } = await supabase
-          .from('payments')
-          .select('reference')
-          .eq('user_id', user.id)
-          .in('reference', references)
-
-        existingReferences = new Set(
-          existingPayments?.map((p) => p.reference).filter((r): r is string => r !== null) || []
-        )
-      }
-
-      const newPayments = paymentsToInsert.filter(
-        (p) => !p.reference || !existingReferences.has(p.reference)
-      )
-      const skippedCount = paymentsToInsert.length - newPayments.length
-
-      if (newPayments.length === 0) {
-        toast.info('Wszystkie płatności już istnieją w systemie')
-        setImportResult({
-          imported: 0,
-          skipped: skippedCount,
-          errors: [],
+      // Use upsert with ignoreDuplicates to handle duplicates at database level
+      // This is more reliable than checking references in batches
+      const { data: insertedData, error } = await supabase
+        .from('payments')
+        .upsert(paymentsToInsert, {
+          onConflict: 'company_id,reference',
+          ignoreDuplicates: true,
         })
-        setStep('complete')
-        return
-      }
+        .select('id')
 
-      // Insert payments
-      const { error } = await supabase.from('payments').insert(newPayments)
+      // Count how many were actually inserted vs skipped
+      const insertedCount = insertedData?.length || 0
+      const skippedCount = paymentsToInsert.length - insertedCount
 
       if (error) {
         console.error('Import error:', error)
@@ -166,19 +155,23 @@ export function PaymentImport(): React.JSX.Element {
       }
 
       setImportResult({
-        imported: newPayments.length,
+        imported: insertedCount,
         skipped: skippedCount,
         errors: [],
       })
 
-      toast.success(`Zaimportowano ${newPayments.length} płatności`)
+      if (insertedCount === 0) {
+        toast.info('Wszystkie płatności już istnieją w systemie')
+      } else {
+        toast.success(`Zaimportowano ${insertedCount} płatności`)
+      }
       setStep('complete')
     } catch (error) {
       console.error('Import error:', error)
       toast.error('Nieoczekiwany błąd podczas importu')
       setStep('error')
     }
-  }, [preview, detectedFormat, file?.name])
+  }, [preview, detectedFormat, file?.name, currentCompany])
 
   return (
     <Card>
@@ -188,7 +181,7 @@ export function PaymentImport(): React.JSX.Element {
           Import wyciągu bankowego
         </CardTitle>
         <CardDescription>
-          Zaimportuj płatności z wyciągu bankowego (MT940, mBank CSV, ING CSV)
+          Zaimportuj płatności z wyciągu bankowego (MT940, mBank CSV, mBank MŚP, ING CSV, Pekao SA)
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -199,7 +192,7 @@ export function PaymentImport(): React.JSX.Element {
             selectedFile={file}
             onClear={handleClear}
             label="Wybierz wyciąg bankowy"
-            hint="Obsługiwane formaty: MT940 (.sta, .mt940), mBank CSV, ING CSV"
+            hint="Obsługiwane formaty: MT940 (.sta, .mt940), mBank CSV, mBank MŚP, ING CSV, Pekao SA"
             disabled={isProcessing}
           />
         )}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useCompany } from '@/contexts/CompanyContext'
 import type { Invoice } from '@/types'
 
 interface OverdueStats {
@@ -59,12 +60,20 @@ function getAgeGroup(days: number): '1-7' | '8-30' | '31-60' | '60+' {
 }
 
 export function useOverdue(): UseOverdueResult {
+  const { currentCompany } = useCompany()
   const [invoices, setInvoices] = useState<OverdueInvoice[]>([])
   const [stats, setStats] = useState<OverdueStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
+    if (!currentCompany) {
+      setInvoices([])
+      setStats(null)
+      setIsLoading(false)
+      return
+    }
+
     setIsLoading(true)
     setError(null)
 
@@ -84,7 +93,7 @@ export function useOverdue(): UseOverdueResult {
       const { data, error: fetchError } = await supabase
         .from('invoices')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('company_id', currentCompany.id)
         .or(`payment_status.eq.overdue,and(payment_status.eq.pending,due_date.lt.${today})`)
         .order('due_date', { ascending: true })
 
@@ -146,11 +155,11 @@ export function useOverdue(): UseOverdueResult {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [currentCompany])
 
   useEffect(() => {
     refresh()
-  }, [refresh])
+  }, [refresh, currentCompany?.id])
 
   const exportToCsv = useCallback(() => {
     if (invoices.length === 0) return

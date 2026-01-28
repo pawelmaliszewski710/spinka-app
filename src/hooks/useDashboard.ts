@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useCompany } from '@/contexts/CompanyContext'
 import type { Invoice, Payment, Match } from '@/types'
 
 interface DashboardStats {
@@ -43,6 +44,7 @@ interface UseDashboardResult {
 
 
 export function useDashboard(): UseDashboardResult {
+  const { currentCompany } = useCompany()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([])
   const [recentPayments, setRecentPayments] = useState<Payment[]>([])
@@ -52,6 +54,16 @@ export function useDashboard(): UseDashboardResult {
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
+    if (!currentCompany) {
+      setStats(null)
+      setRecentInvoices([])
+      setRecentPayments([])
+      setRecentMatches([])
+      setOverdueInvoices([])
+      setIsLoading(false)
+      return
+    }
+
     setIsLoading(true)
     setError(null)
 
@@ -65,22 +77,22 @@ export function useDashboard(): UseDashboardResult {
         return
       }
 
-      // Fetch all data in parallel
+      // Fetch all data in parallel - filter by company_id
       const [invoicesResult, paymentsResult, matchesResult] = await Promise.all([
         supabase
           .from('invoices')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('company_id', currentCompany.id)
           .order('created_at', { ascending: false }),
         supabase
           .from('payments')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('company_id', currentCompany.id)
           .order('created_at', { ascending: false }),
         supabase
           .from('matches')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('company_id', currentCompany.id)
           .order('matched_at', { ascending: false }),
       ])
 
@@ -164,11 +176,11 @@ export function useDashboard(): UseDashboardResult {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [currentCompany])
 
   useEffect(() => {
     refresh()
-  }, [refresh])
+  }, [refresh, currentCompany?.id])
 
   return {
     stats,

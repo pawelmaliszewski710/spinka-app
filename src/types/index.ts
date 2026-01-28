@@ -1,6 +1,12 @@
 // Re-export types from database (Supabase types)
 export type {
   Database,
+  Company,
+  CompanyInsert,
+  CompanyUpdate,
+  CompanyIntegration,
+  CompanyIntegrationInsert,
+  CompanyIntegrationUpdate,
   Invoice,
   InvoiceInsert,
   InvoiceUpdate,
@@ -15,6 +21,7 @@ export type {
   PaymentStatus,
   MatchType,
   ImportSource,
+  AiProvider,
 } from './database'
 
 // Invoice filter types
@@ -29,6 +36,7 @@ export type {
   MatchResult,
   MatchBreakdown,
   MatchSuggestion,
+  GroupMatchSuggestion,
   AutoMatchResponse,
 } from './match'
 

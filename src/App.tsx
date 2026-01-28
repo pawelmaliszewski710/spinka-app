@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from '@/components/ui/sonner'
 import { ProtectedRoute } from '@/components/auth'
+import { CompanyProvider } from '@/contexts/CompanyContext'
 import {
   LoginPage,
   RegisterPage,
@@ -9,6 +10,10 @@ import {
   PaymentsPage,
   MatchingPage,
   OverduePage,
+  CompanySelectPage,
+  CompanyManagePage,
+  AiChatPage,
+  SettingsPage,
 } from '@/pages'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -34,73 +39,109 @@ function PublicRoute({ children }: { children: React.ReactNode }): React.JSX.Ele
 function App(): React.JSX.Element {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Public routes */}
-        <Route
-          path="/login"
-          element={
-            <PublicRoute>
-              <LoginPage />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <PublicRoute>
-              <RegisterPage />
-            </PublicRoute>
-          }
-        />
+      <CompanyProvider>
+        <Routes>
+          {/* Public routes */}
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <LoginPage />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <PublicRoute>
+                <RegisterPage />
+              </PublicRoute>
+            }
+          />
 
-        {/* Protected routes */}
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <DashboardPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/invoices"
-          element={
-            <ProtectedRoute>
-              <InvoicesPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/payments"
-          element={
-            <ProtectedRoute>
-              <PaymentsPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/matching"
-          element={
-            <ProtectedRoute>
-              <MatchingPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/overdue"
-          element={
-            <ProtectedRoute>
-              <OverduePage />
-            </ProtectedRoute>
-          }
-        />
+          {/* Company selection (requires auth, but not company) */}
+          <Route
+            path="/select-company"
+            element={
+              <ProtectedRoute requireCompany={false}>
+                <CompanySelectPage />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Catch all - redirect to dashboard */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          {/* Protected routes (require auth and company) */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/invoices"
+            element={
+              <ProtectedRoute>
+                <InvoicesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/payments"
+            element={
+              <ProtectedRoute>
+                <PaymentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/matching"
+            element={
+              <ProtectedRoute>
+                <MatchingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/overdue"
+            element={
+              <ProtectedRoute>
+                <OverduePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/companies"
+            element={
+              <ProtectedRoute>
+                <CompanyManagePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ai-chat"
+            element={
+              <ProtectedRoute>
+                <AiChatPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
 
-      {/* Global toast notifications */}
-      <Toaster position="top-right" />
+          {/* Catch all - redirect to dashboard */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+
+        {/* Global toast notifications */}
+        <Toaster position="top-right" />
+      </CompanyProvider>
     </BrowserRouter>
   )
 }

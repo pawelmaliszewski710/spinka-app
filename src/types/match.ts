@@ -38,6 +38,26 @@ export interface MatchSuggestion {
   confidence: number
   breakdown: MatchBreakdown
   reasons: string[]
+  // Opcjonalne pola dla dopasowań grupowych
+  groupInvoiceIds?: string[]
+  isGroupMatch?: boolean
+}
+
+// Sugestia grupowa - jedna płatność za wiele faktur
+export interface GroupMatchSuggestion {
+  type: 'single' | 'group'
+  invoices: Invoice[]
+  payment: Payment
+  confidence: number
+  totalInvoiceAmount: number
+  reasons: string[]
+  buyerName: string
+  buyerNip?: string
+  // Okres grupowania (opcjonalnie dla wielu miesięcy)
+  groupPeriod?: {
+    from: string  // YYYY-MM
+    to: string    // YYYY-MM
+  }
 }
 
 // Auto-match response from Edge Function

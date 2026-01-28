@@ -2,6 +2,62 @@ import type { ParsedInvoice, ParseResult, ImportError } from '@/types'
 import { normalizeNip } from '@/lib/utils'
 
 // ============================================
+// Invoice Type Detection
+// ============================================
+
+/**
+ * Check if invoice number represents a correction invoice (korekta)
+ * Correction invoices start with K, e.g.: K1, K2, K3/01/2025, K-123
+ */
+function isCorrectionInvoice(invoiceNumber: string): boolean {
+  const normalized = invoiceNumber.trim().toUpperCase()
+  // Starts with K followed by a digit or separator
+  return /^K[\d\s\-\/\\_.]/i.test(normalized) || /^K$/i.test(normalized)
+}
+
+/**
+ * Check if invoice number represents a proforma invoice
+ * Proforma patterns:
+ * - PS P6/01/2026, PS P11/11/2025 (PS followed by P and number)
+ * - P1, P2, P123/01/2025 (just P prefix)
+ * - PRO-123, PROFORMA-123
+ */
+function isProformaInvoice(invoiceNumber: string): boolean {
+  const normalized = invoiceNumber.trim().toUpperCase()
+
+  // Pattern: PS P... (PS followed by space/separator and P)
+  if (/^PS\s*P[\d\s\-\/\\_.]/i.test(normalized)) {
+    return true
+  }
+
+  // Pattern: Just P followed by number (P1, P2, P123/01/2025)
+  // But NOT patterns like PS, PSA, etc. - only pure P prefix
+  if (/^P[\d\s\-\/\\_.]/i.test(normalized) && !/^P[A-Z]/i.test(normalized)) {
+    return true
+  }
+
+  // Pattern: PRO or PROFORMA prefix
+  if (/^PRO[\s\-\/\\_.]?/i.test(normalized) || /^PROFORMA/i.test(normalized)) {
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Get the reason why invoice is excluded
+ */
+function getExclusionReason(invoiceNumber: string): string | null {
+  if (isCorrectionInvoice(invoiceNumber)) {
+    return 'korekta'
+  }
+  if (isProformaInvoice(invoiceNumber)) {
+    return 'proforma'
+  }
+  return null
+}
+
+// ============================================
 // Fakturownia XML Parser
 // ============================================
 
@@ -82,6 +138,13 @@ export function parseFakturowniaXML(content: string): ParseResult<ParsedInvoice>
         continue
       }
 
+      // Skip correction and proforma invoices
+      const exclusionReason = getExclusionReason(invoiceNumber)
+      if (exclusionReason) {
+        warnings.push(`Faktura ${invoiceNumber}: Pominięta (${exclusionReason})`)
+        continue
+      }
+
       // Extract dates
       const issueDate = getXmlText(invoice, 'issue-date') || getXmlText(invoice, 'sell-date')
       if (!issueDate) {
@@ -145,6 +208,9 @@ export function parseFakturowniaXML(content: string): ParseResult<ParsedInvoice>
       // Extract subaccount (buyer-mass-payment-code)
       const buyerSubaccount = getXmlText(invoice, 'buyer-mass-payment-code')
 
+      // Extract seller bank account
+      const sellerBankAccount = getXmlText(invoice, 'seller-bank-account')
+
       // Validate NIP if provided
       if (rawNip && (!buyerNip || buyerNip.length !== 10)) {
         warnings.push(`Faktura ${invoiceNumber}: NIP "${rawNip}" może być nieprawidłowy`)
@@ -153,6 +219,32 @@ export function parseFakturowniaXML(content: string): ParseResult<ParsedInvoice>
       // Validate date logic
       if (new Date(issueDate) > new Date(dueDate)) {
         warnings.push(`Faktura ${invoiceNumber}: Termin płatności jest wcześniejszy niż data wystawienia`)
+      }
+
+      // Check if invoice is already paid
+      // Look for paid-price or payment-status fields
+      const paidAmount = parseXmlAmount(invoice, 'paid-price') ||
+                         parseXmlAmount(invoice, 'paid') ||
+                         parseXmlAmount(invoice, 'paid-amount')
+
+      const paymentStatus = getXmlText(invoice, 'payment-status')?.toLowerCase()
+
+      // Skip if fully paid (paid amount equals gross or status is "paid")
+      let isAlreadyPaid = false
+      if (paidAmount !== null && grossAmount !== null) {
+        const diff = Math.abs(paidAmount - grossAmount)
+        if (diff < 0.01) {
+          isAlreadyPaid = true
+          warnings.push(`Faktura ${invoiceNumber}: Pominięta (już opłacona - kwota opłacona: ${paidAmount.toFixed(2)} PLN)`)
+        }
+      } else if (paymentStatus === 'paid' || paymentStatus === 'oplacona' || paymentStatus === 'opłacona') {
+        isAlreadyPaid = true
+        warnings.push(`Faktura ${invoiceNumber}: Pominięta (status: opłacona)`)
+      }
+
+      // Skip already paid invoices
+      if (isAlreadyPaid) {
+        continue
       }
 
       data.push({
@@ -165,6 +257,7 @@ export function parseFakturowniaXML(content: string): ParseResult<ParsedInvoice>
         buyer_name: buyerName,
         buyer_nip: buyerNip,
         buyer_subaccount: buyerSubaccount,
+        seller_bank_account: sellerBankAccount,
       })
     }
 
@@ -237,10 +330,15 @@ const EXPECTED_HEADERS = {
   issueDate: ['data wystawienia', 'data'],
   dueDate: ['termin płatności', 'termin', 'termin platnosci'],
   netAmount: ['netto', 'kwota netto', 'wartość netto'],
-  grossAmount: ['brutto', 'kwota brutto', 'wartość brutto'],
+  grossAmount: ['brutto', 'kwota brutto', 'wartość brutto', 'wartość brutto pln'],
   currency: ['waluta'],
   buyerName: ['nabywca', 'nazwa nabywcy', 'kontrahent'],
   buyerNip: ['nip nabywcy', 'nip', 'nip kontrahenta'],
+}
+
+// Optional headers for payment status detection
+const OPTIONAL_HEADERS = {
+  paidAmount: ['kwota opłacona', 'kwota oplacona', 'opłacono', 'oplacono', 'zapłacono', 'zaplacono'],
 }
 
 interface ColumnMapping {
@@ -252,6 +350,8 @@ interface ColumnMapping {
   currency: number
   buyerName: number
   buyerNip: number
+  // Optional columns
+  paidAmount?: number
 }
 
 function detectDelimiter(content: string): string {
@@ -302,12 +402,21 @@ function findColumnIndex(headers: string[], possibleNames: string[]): number {
 function detectColumnMapping(headers: string[]): ColumnMapping | null {
   const mapping: Partial<ColumnMapping> = {}
 
+  // Check required headers
   for (const [key, possibleNames] of Object.entries(EXPECTED_HEADERS)) {
     const index = findColumnIndex(headers, possibleNames)
     if (index === -1) {
       return null
     }
     mapping[key as keyof ColumnMapping] = index
+  }
+
+  // Check optional headers
+  for (const [key, possibleNames] of Object.entries(OPTIONAL_HEADERS)) {
+    const index = findColumnIndex(headers, possibleNames)
+    if (index !== -1) {
+      mapping[key as keyof ColumnMapping] = index
+    }
   }
 
   return mapping as ColumnMapping
@@ -436,6 +545,13 @@ export function parseFakturowniaCSV(content: string): ParseResult<ParsedInvoice>
       continue
     }
 
+    // Skip correction and proforma invoices
+    const exclusionReason = getExclusionReason(invoiceNumber)
+    if (exclusionReason) {
+      warnings.push(`Faktura ${invoiceNumber}: Pominięta (${exclusionReason})`)
+      continue
+    }
+
     // Parse issue date
     const issueDate = parseDate(values[mapping.issueDate])
     if (!issueDate) {
@@ -511,6 +627,26 @@ export function parseFakturowniaCSV(content: string): ParseResult<ParsedInvoice>
       warnings.push(`Wiersz ${rowNumber}: Termin płatności jest wcześniejszy niż data wystawienia`)
     }
 
+    // Check if invoice is already paid (paidAmount === grossAmount)
+    // If paid amount column exists and matches gross amount, skip invoice
+    let isAlreadyPaid = false
+    if (mapping.paidAmount !== undefined) {
+      const paidAmount = parseAmount(values[mapping.paidAmount])
+      if (paidAmount !== null && !isNaN(paidAmount)) {
+        // Compare with tolerance for floating point errors (within 1 cent)
+        const diff = Math.abs(paidAmount - grossAmount)
+        if (diff < 0.01) {
+          isAlreadyPaid = true
+          warnings.push(`Faktura ${invoiceNumber}: Pominięta (już opłacona - kwota opłacona: ${paidAmount.toFixed(2)} PLN)`)
+        }
+      }
+    }
+
+    // Skip already paid invoices - they don't need matching
+    if (isAlreadyPaid) {
+      continue
+    }
+
     data.push({
       invoice_number: invoiceNumber,
       issue_date: issueDate,
@@ -521,6 +657,7 @@ export function parseFakturowniaCSV(content: string): ParseResult<ParsedInvoice>
       buyer_name: buyerName,
       buyer_nip: buyerNip,
       buyer_subaccount: null, // CSV format doesn't include subaccount
+      seller_bank_account: null, // CSV format doesn't include seller bank account
     })
   }
 

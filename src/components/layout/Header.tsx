@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { CompanySwitcher } from '@/components/company/CompanySwitcher'
 import { LogOut, FileText } from 'lucide-react'
 
 export function Header(): React.JSX.Element {
@@ -31,6 +32,8 @@ export function Header(): React.JSX.Element {
         <div className="ml-auto flex items-center gap-4">
           {user && (
             <>
+              <CompanySwitcher />
+              <Separator orientation="vertical" className="h-6" />
               <span className="text-sm text-muted-foreground">{user.email}</span>
               <Button variant="ghost" size="sm" onClick={handleSignOut}>
                 <LogOut className="mr-2 h-4 w-4" />

@@ -222,123 +222,109 @@ export function InvoicesPage(): React.JSX.Element {
         )}
 
         <BlurFade delay={0.2}>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Lista faktur
-              </CardTitle>
-              <CardDescription>
-                {invoices.length > 0
-                  ? <>Łącznie <NumberTicker value={invoices.length} className="inline text-muted-foreground" /> faktur</>
-                  : 'Zaimportuj faktury aby rozpocząć'}
-              </CardDescription>
-            </CardHeader>
-          <CardContent>
-            {invoices.length > 0 && (
-              <div className="mb-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Szukaj po numerze, nabywcy, NIP lub koncie..."
-                    value={searchQuery}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-            )}
-
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
+          {loading ? (
+            <Card>
+              <CardContent className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : invoices.length === 0 ? (
-              <BlurFade delay={0.1}>
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <FileText className="h-12 w-12 text-muted-foreground/50" />
-                  <h3 className="mt-4 text-lg font-medium">Brak faktur</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Zaimportuj faktury z pliku CSV lub XML aby rozpocząć
-                  </p>
-                  <Button className="mt-4" onClick={() => setShowImport(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Importuj faktury
-                  </Button>
+              </CardContent>
+            </Card>
+          ) : invoices.length === 0 ? (
+            <InvoiceImport />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Lista faktur
+                </CardTitle>
+                <CardDescription>
+                  Łącznie <NumberTicker value={invoices.length} className="inline text-muted-foreground" /> faktur
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Szukaj po numerze, nabywcy, NIP lub koncie..."
+                      value={searchQuery}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
                 </div>
-              </BlurFade>
-            ) : (
-              <div className="rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nr faktury</TableHead>
-                      <TableHead>Nabywca</TableHead>
-                      <TableHead className="text-right">Kwota brutto</TableHead>
-                      <TableHead>Termin płatności</TableHead>
-                      <TableHead>Konto sprzedawcy</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredInvoices.length === 0 ? (
+
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground">
-                          Brak faktur pasujących do wyszukiwania
-                        </TableCell>
+                        <TableHead>Nr faktury</TableHead>
+                        <TableHead>Nabywca</TableHead>
+                        <TableHead className="text-right">Kwota brutto</TableHead>
+                        <TableHead>Termin płatności</TableHead>
+                        <TableHead>Konto sprzedawcy</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
-                    ) : (
-                      filteredInvoices.map((invoice) => {
-                        const status = STATUS_BADGES[invoice.payment_status] || STATUS_BADGES.pending
-                        return (
-                          <TableRow
-                            key={invoice.id}
-                            className="cursor-pointer hover:bg-muted/50"
-                            onClick={() => setSelectedInvoice(invoice)}
-                          >
-                            <TableCell className="font-mono text-sm font-medium text-primary">
-                              {invoice.invoice_number}
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <div className="font-medium">{invoice.buyer_name}</div>
-                                {invoice.buyer_nip && (
-                                  <div className="text-xs text-muted-foreground">
-                                    NIP: {invoice.buyer_nip}
-                                  </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredInvoices.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground">
+                            Brak faktur pasujących do wyszukiwania
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredInvoices.map((invoice) => {
+                          const status = STATUS_BADGES[invoice.payment_status] || STATUS_BADGES.pending
+                          return (
+                            <TableRow
+                              key={invoice.id}
+                              className="cursor-pointer hover:bg-muted/50"
+                              onClick={() => setSelectedInvoice(invoice)}
+                            >
+                              <TableCell className="font-mono text-sm font-medium text-primary">
+                                {invoice.invoice_number}
+                              </TableCell>
+                              <TableCell>
+                                <div>
+                                  <div className="font-medium">{invoice.buyer_name}</div>
+                                  {invoice.buyer_nip && (
+                                    <div className="text-xs text-muted-foreground">
+                                      NIP: {invoice.buyer_nip}
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatCurrency(invoice.gross_amount, invoice.currency)}
+                              </TableCell>
+                              <TableCell>{formatDate(invoice.due_date)}</TableCell>
+                              <TableCell className="font-mono text-xs">
+                                {invoice.seller_bank_account ? (
+                                  <span title={formatBankAccount(invoice.seller_bank_account)}>
+                                    ...{invoice.seller_bank_account.replace(/\s/g, '').slice(-8)}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
                                 )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(invoice.gross_amount, invoice.currency)}
-                            </TableCell>
-                            <TableCell>{formatDate(invoice.due_date)}</TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {invoice.seller_bank_account ? (
-                                <span title={formatBankAccount(invoice.seller_bank_account)}>
-                                  ...{invoice.seller_bank_account.replace(/\s/g, '').slice(-8)}
+                              </TableCell>
+                              <TableCell>
+                                <span
+                                  className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${status.className}`}
+                                >
+                                  {status.label}
                                 </span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <span
-                                className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${status.className}`}
-                              >
-                                {status.label}
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </BlurFade>
       </div>
 

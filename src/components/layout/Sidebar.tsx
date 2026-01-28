@@ -6,6 +6,8 @@ import {
   CreditCard,
   Link2,
   AlertTriangle,
+  Bot,
+  Settings,
 } from 'lucide-react'
 
 interface NavItem {
@@ -20,6 +22,8 @@ const navItems: NavItem[] = [
   { to: '/payments', icon: CreditCard, label: 'Płatności' },
   { to: '/matching', icon: Link2, label: 'Dopasowania' },
   { to: '/overdue', icon: AlertTriangle, label: 'Zaległości' },
+  { to: '/ai-chat', icon: Bot, label: 'AI Fakturownia' },
+  { to: '/settings', icon: Settings, label: 'Ustawienia' },
 ]
 
 export function Sidebar(): React.JSX.Element {
