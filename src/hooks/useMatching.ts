@@ -36,6 +36,8 @@ interface UseMatchingResult {
   removeMatch: (matchId: string) => Promise<void>
   deleteInvoice: (invoiceId: string) => Promise<void>
   deletePayment: (paymentId: string) => Promise<void>
+  updateInvoicePaymentStatus: (invoiceId: string, status: 'pending' | 'paid' | 'overdue' | 'partial' | 'canceled') => Promise<boolean>
+  updateInvoiceFakturowniaStatus: (invoiceId: string, status: 'issued' | 'paid') => Promise<boolean>
   refresh: () => Promise<void>
 }
 
@@ -690,6 +692,80 @@ export function useMatching(): UseMatchingResult {
     [refresh]
   )
 
+  const updateInvoicePaymentStatus = useCallback(
+    async (invoiceId: string, status: 'pending' | 'paid' | 'overdue' | 'partial' | 'canceled'): Promise<boolean> => {
+      try {
+        const { error } = await supabase
+          .from('invoices')
+          .update({ payment_status: status })
+          .eq('id', invoiceId)
+
+        if (error) {
+          console.error('Error updating invoice status:', error)
+          return false
+        }
+
+        // Update local cache immediately for instant UI feedback
+        setInvoicesCache((prev) => {
+          const newCache = new Map(prev)
+          const invoice = newCache.get(invoiceId)
+          if (invoice) {
+            newCache.set(invoiceId, { ...invoice, payment_status: status })
+          }
+          return newCache
+        })
+
+        return true
+      } catch (error) {
+        console.error('Error updating invoice payment status:', error)
+        return false
+      }
+    },
+    []
+  )
+
+  const updateInvoiceFakturowniaStatus = useCallback(
+    async (invoiceId: string, status: 'issued' | 'paid'): Promise<boolean> => {
+      try {
+        // Map Fakturownia status to local payment_status
+        const paymentStatus = status === 'paid' ? 'paid' : 'pending'
+
+        const { error } = await supabase
+          .from('invoices')
+          .update({
+            fakturownia_status: status,
+            payment_status: paymentStatus
+          })
+          .eq('id', invoiceId)
+
+        if (error) {
+          console.error('Error updating invoice fakturownia status:', error)
+          return false
+        }
+
+        // Update local cache immediately for instant UI feedback
+        setInvoicesCache((prev) => {
+          const newCache = new Map(prev)
+          const invoice = newCache.get(invoiceId)
+          if (invoice) {
+            newCache.set(invoiceId, {
+              ...invoice,
+              fakturownia_status: status,
+              payment_status: paymentStatus
+            })
+          }
+          return newCache
+        })
+
+        return true
+      } catch (error) {
+        console.error('Error updating invoice fakturownia status:', error)
+        return false
+      }
+    },
+    []
+  )
+
   return {
     isLoading,
     isProcessing,
@@ -711,6 +787,8 @@ export function useMatching(): UseMatchingResult {
     removeMatch,
     deleteInvoice,
     deletePayment,
+    updateInvoicePaymentStatus,
+    updateInvoiceFakturowniaStatus,
     refresh,
   }
 }

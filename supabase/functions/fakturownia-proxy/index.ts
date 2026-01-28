@@ -154,12 +154,31 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    // Return response
-    const data = await fakturowniaResponse.json()
-    return new Response(
-      JSON.stringify(data),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    // Return response - handle empty responses (e.g., from change_status endpoint)
+    const responseText = await fakturowniaResponse.text()
+
+    // If response is empty or not valid JSON, return success indicator
+    if (!responseText || responseText.trim() === '') {
+      return new Response(
+        JSON.stringify({ success: true, message: 'Operacja wykonana pomyślnie' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Try to parse as JSON
+    try {
+      const data = JSON.parse(responseText)
+      return new Response(
+        JSON.stringify(data),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    } catch {
+      // If not valid JSON but response was OK, return success with raw text
+      return new Response(
+        JSON.stringify({ success: true, message: responseText }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
   } catch (error) {
     console.error('Fakturownia proxy error:', error)

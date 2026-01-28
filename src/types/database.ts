@@ -3,6 +3,7 @@
 // to regenerate after schema changes
 
 export type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'partial' | 'canceled'
+export type FakturowniaStatus = 'issued' | 'paid' | null
 export type MatchType = 'auto' | 'manual'
 export type ImportSource = 'fakturownia' | 'mt940' | 'mbank' | 'mbank_corporate' | 'mbank_sme' | 'ing' | 'pekao' | 'pko'
 export type AiProvider = 'openrouter' | 'openai' | 'anthropic'
@@ -66,6 +67,7 @@ export type Database = {
           fakturownia_id: number | null
           invoice_kind: string | null
           payment_status: PaymentStatus
+          fakturownia_status: FakturowniaStatus
           created_at: string
           updated_at: string
         }
@@ -86,6 +88,7 @@ export type Database = {
           fakturownia_id?: number | null
           invoice_kind?: string | null
           payment_status?: PaymentStatus
+          fakturownia_status?: FakturowniaStatus
           created_at?: string
           updated_at?: string
         }
@@ -106,6 +109,7 @@ export type Database = {
           fakturownia_id?: number | null
           invoice_kind?: string | null
           payment_status?: PaymentStatus
+          fakturownia_status?: FakturowniaStatus
           created_at?: string
           updated_at?: string
         }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { PageContainer } from '@/components/layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -38,6 +38,18 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Link2,
   Loader2,
   RefreshCw,
@@ -59,8 +71,11 @@ import {
   Banknote,
   User,
   Info,
+  Send,
+  AlertCircle,
 } from 'lucide-react'
 import { useMatching } from '@/hooks/useMatching'
+import { useFakturownia } from '@/hooks/useFakturownia'
 import { getMatchQuality } from '@/lib/matching'
 import type { GroupMatchSuggestion } from '@/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -110,6 +125,8 @@ export function MatchingPage(): React.JSX.Element {
     removeMatch,
     deleteInvoice,
     deletePayment,
+    updateInvoicePaymentStatus,
+    updateInvoiceFakturowniaStatus,
     refresh,
   } = useMatching()
 
@@ -120,6 +137,25 @@ export function MatchingPage(): React.JSX.Element {
     invoice: ReturnType<typeof invoicesCache.get>
     payment: ReturnType<typeof paymentsCache.get>
   } | null>(null)
+
+  // Fakturownia integration
+  const {
+    isConfigured: isFakturowniaConfigured,
+    isCheckingConfig: isCheckingFakturowniaConfig,
+    changeInvoiceStatus,
+    markMultipleInvoicesAsPaid,
+    isLoading: isFakturowniaLoading,
+  } = useFakturownia()
+
+  type FakturowniaStatus = 'issued' | 'paid'
+
+  // State for bulk Fakturownia update
+  const [fakturowniaProgress, setFakturowniaProgress] = useState<{
+    isRunning: boolean
+    current: number
+    total: number
+  } | null>(null)
+  const [sendingToFakturowniaIds, setSendingToFakturowniaIds] = useState<Set<string>>(new Set())
 
   // Get all invoices as array for analytics
   const allInvoices = useMemo(() => Array.from(invoicesCache.values()), [invoicesCache])
@@ -171,6 +207,94 @@ export function MatchingPage(): React.JSX.Element {
     setPaymentSearchQuery('')
     setSelectedPaymentId(null)
   }
+
+  // Send status change to Fakturownia
+  const handleChangeStatusInFakturownia = useCallback(async (
+    invoiceId: string,
+    fakturowniaId: number | null,
+    status: FakturowniaStatus
+  ) => {
+    if (!fakturowniaId) {
+      toast.error('Ta faktura nie ma powiązania z Fakturownia (brak fakturownia_id)')
+      return
+    }
+
+    setSendingToFakturowniaIds(prev => new Set(prev).add(invoiceId))
+
+    try {
+      const success = await changeInvoiceStatus(fakturowniaId, status)
+      if (success) {
+        // Update both fakturownia_status and payment_status in local database and cache
+        await updateInvoiceFakturowniaStatus(invoiceId, status)
+      }
+    } finally {
+      setSendingToFakturowniaIds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(invoiceId)
+        return newSet
+      })
+    }
+  }, [changeInvoiceStatus, updateInvoiceFakturowniaStatus])
+
+  // Send all confirmed matches to Fakturownia
+  const handleSendAllToFakturownia = useCallback(async () => {
+    // Get all invoices with fakturownia_id from confirmed matches
+    const invoicesWithFakturowniaId = confirmedMatches
+      .map(match => {
+        const invoice = invoicesCache.get(match.invoice_id)
+        return invoice
+      })
+      .filter((invoice): invoice is NonNullable<typeof invoice> =>
+        invoice !== undefined && invoice.fakturownia_id !== null
+      )
+
+    if (invoicesWithFakturowniaId.length === 0) {
+      toast.error('Brak faktur z powiązaniem do Fakturowni')
+      return
+    }
+
+    // Filter only invoices without confirmed 'paid' status in Fakturownia
+    const unpaidInvoices = invoicesWithFakturowniaId.filter(
+      inv => inv.fakturownia_status !== 'paid'
+    )
+
+    if (unpaidInvoices.length === 0) {
+      toast.info('Wszystkie faktury są już oznaczone jako opłacone')
+      return
+    }
+
+    const fakturowniaIds = unpaidInvoices.map(inv => inv.fakturownia_id as number)
+
+    setFakturowniaProgress({ isRunning: true, current: 0, total: fakturowniaIds.length })
+
+    try {
+      const results = await markMultipleInvoicesAsPaid(fakturowniaIds, (completed, total) => {
+        setFakturowniaProgress({ isRunning: true, current: completed, total })
+      })
+
+      // Update local status for successfully updated invoices
+      for (const result of results) {
+        if (result.success) {
+          const invoice = unpaidInvoices.find(inv => inv.fakturownia_id === result.id)
+          if (invoice) {
+            await updateInvoiceFakturowniaStatus(invoice.id, 'paid')
+          }
+        }
+      }
+    } finally {
+      setFakturowniaProgress(null)
+    }
+  }, [confirmedMatches, invoicesCache, markMultipleInvoicesAsPaid, updateInvoiceFakturowniaStatus])
+
+  // Count invoices that can be sent to Fakturownia (all with fakturownia_id)
+  const invoicesForFakturownia = useMemo(() => {
+    return confirmedMatches
+      .map(match => invoicesCache.get(match.invoice_id))
+      .filter((invoice): invoice is NonNullable<typeof invoice> =>
+        invoice !== undefined &&
+        invoice.fakturownia_id !== null
+      )
+  }, [confirmedMatches, invoicesCache])
 
   const tabs = [
     {
@@ -444,6 +568,70 @@ export function MatchingPage(): React.JSX.Element {
                 {/* Confirmed matches tab */}
                 {selectedTab === 'confirmed' && (
                   <>
+                    {/* Fakturownia bulk action */}
+                    {confirmedMatches.length > 0 && isFakturowniaConfigured && (
+                      <div className="mb-4 flex items-center justify-between rounded-lg border bg-muted/30 p-3">
+                        <div className="flex items-center gap-3">
+                          <Send className="h-5 w-5 text-blue-600" />
+                          <div>
+                            <div className="text-sm font-medium">
+                              Zmień status w Fakturowni
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {invoicesForFakturownia.length} faktur z powiązaniem do Fakturowni
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {fakturowniaProgress && (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span>{fakturowniaProgress.current}/{fakturowniaProgress.total}</span>
+                            </div>
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="sm"
+                                disabled={
+                                  invoicesForFakturownia.length === 0 ||
+                                  isFakturowniaLoading ||
+                                  fakturowniaProgress?.isRunning
+                                }
+                              >
+                                {fakturowniaProgress?.isRunning ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Send className="mr-2 h-4 w-4" />
+                                )}
+                                Zmień wszystkie
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={handleSendAllToFakturownia}>
+                                <CheckCircle2 className="mr-2 h-4 w-4 text-green-600" />
+                                Oznacz wszystkie jako Opłacone
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fakturownia not configured warning */}
+                    {confirmedMatches.length > 0 && !isCheckingFakturowniaConfig && !isFakturowniaConfigured && (
+                      <div className="mb-4 flex items-center gap-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-800 dark:bg-yellow-950/20">
+                        <AlertCircle className="h-5 w-5 text-yellow-600" />
+                        <div className="text-sm">
+                          <span className="font-medium">Fakturownia nie jest skonfigurowana.</span>
+                          {' '}
+                          <span className="text-muted-foreground">
+                            Przejdź do Ustawień, aby połączyć konto i móc automatycznie oznaczać faktury jako opłacone.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {confirmedMatches.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-12 text-center">
                         <Check className="h-12 w-12 text-muted-foreground/50" />
@@ -462,6 +650,7 @@ export function MatchingPage(): React.JSX.Element {
                               <TableHead className="text-right">Kwota</TableHead>
                               <TableHead>Zgodność</TableHead>
                               <TableHead>Typ</TableHead>
+                              {isFakturowniaConfigured && <TableHead className="w-[120px]">Fakturownia</TableHead>}
                               <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                           </TableHeader>
@@ -512,6 +701,85 @@ export function MatchingPage(): React.JSX.Element {
                                       {match.match_type === 'auto' ? 'Auto' : 'Ręczne'}
                                     </span>
                                   </TableCell>
+                                  {isFakturowniaConfigured && (
+                                    <TableCell>
+                                      {invoice?.fakturownia_id ? (
+                                        sendingToFakturowniaIds.has(invoice.id) ? (
+                                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                            Aktualizuję...
+                                          </span>
+                                        ) : (
+                                          <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                              <button
+                                                onClick={(e) => e.stopPropagation()}
+                                                disabled={isFakturowniaLoading}
+                                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors hover:opacity-80 disabled:opacity-50 ${
+                                                  invoice.fakturownia_status === 'paid'
+                                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                                    : invoice.fakturownia_status === 'issued'
+                                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                                                }`}
+                                              >
+                                                {invoice.fakturownia_status === 'paid' ? (
+                                                  <>
+                                                    <CheckCircle2 className="h-3 w-3" />
+                                                    Opłacona
+                                                  </>
+                                                ) : invoice.fakturownia_status === 'issued' ? (
+                                                  <>
+                                                    <FileText className="h-3 w-3" />
+                                                    Wystawiona
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <Info className="h-3 w-3" />
+                                                    Zmień status
+                                                  </>
+                                                )}
+                                                <ChevronDown className="h-3 w-3 ml-0.5" />
+                                              </button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                              <DropdownMenuItem
+                                                onClick={() => handleChangeStatusInFakturownia(invoice.id, invoice.fakturownia_id, 'paid')}
+                                                className={invoice.fakturownia_status === 'paid' ? 'bg-green-50 dark:bg-green-900/20' : ''}
+                                              >
+                                                <CheckCircle2 className="mr-2 h-4 w-4 text-green-600" />
+                                                Opłacona
+                                                {invoice.fakturownia_status === 'paid' && (
+                                                  <Check className="ml-auto h-4 w-4 text-green-600" />
+                                                )}
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem
+                                                onClick={() => handleChangeStatusInFakturownia(invoice.id, invoice.fakturownia_id, 'issued')}
+                                                className={invoice.fakturownia_status === 'issued' ? 'bg-blue-50 dark:bg-blue-900/20' : ''}
+                                              >
+                                                <FileText className="mr-2 h-4 w-4 text-blue-600" />
+                                                Wystawiona
+                                                {invoice.fakturownia_status === 'issued' && (
+                                                  <Check className="ml-auto h-4 w-4 text-blue-600" />
+                                                )}
+                                              </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                          </DropdownMenu>
+                                        )
+                                      ) : (
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="text-xs text-muted-foreground">-</span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              Brak powiązania z Fakturownia
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
+                                    </TableCell>
+                                  )}
                                   <TableCell>
                                     <Button
                                       variant="ghost"
@@ -1075,6 +1343,78 @@ export function MatchingPage(): React.JSX.Element {
                   >
                     Zamknij
                   </Button>
+                  {isFakturowniaConfigured && selectedMatchDetails.invoice?.fakturownia_id && (
+                    sendingToFakturowniaIds.has(selectedMatchDetails.invoice.id) ? (
+                      <Button variant="outline" disabled>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Aktualizuję...
+                      </Button>
+                    ) : (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            disabled={isFakturowniaLoading}
+                            className={
+                              selectedMatchDetails.invoice.fakturownia_status === 'paid'
+                                ? 'border-green-300 bg-green-50 text-green-800 hover:bg-green-100 dark:border-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                : selectedMatchDetails.invoice.fakturownia_status === 'issued'
+                                ? 'border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                : 'border-gray-300 bg-gray-50 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                            }
+                          >
+                            {selectedMatchDetails.invoice.fakturownia_status === 'paid' ? (
+                              <>
+                                <CheckCircle2 className="mr-2 h-4 w-4" />
+                                Opłacona
+                              </>
+                            ) : selectedMatchDetails.invoice.fakturownia_status === 'issued' ? (
+                              <>
+                                <FileText className="mr-2 h-4 w-4" />
+                                Wystawiona
+                              </>
+                            ) : (
+                              <>
+                                <Info className="mr-2 h-4 w-4" />
+                                Zmień status
+                              </>
+                            )}
+                            <ChevronDown className="ml-2 h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => handleChangeStatusInFakturownia(
+                              selectedMatchDetails.invoice!.id,
+                              selectedMatchDetails.invoice!.fakturownia_id,
+                              'paid'
+                            )}
+                            className={selectedMatchDetails.invoice.fakturownia_status === 'paid' ? 'bg-green-50 dark:bg-green-900/20' : ''}
+                          >
+                            <CheckCircle2 className="mr-2 h-4 w-4 text-green-600" />
+                            Opłacona
+                            {selectedMatchDetails.invoice.fakturownia_status === 'paid' && (
+                              <Check className="ml-auto h-4 w-4 text-green-600" />
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleChangeStatusInFakturownia(
+                              selectedMatchDetails.invoice!.id,
+                              selectedMatchDetails.invoice!.fakturownia_id,
+                              'issued'
+                            )}
+                            className={selectedMatchDetails.invoice.fakturownia_status === 'issued' ? 'bg-blue-50 dark:bg-blue-900/20' : ''}
+                          >
+                            <FileText className="mr-2 h-4 w-4 text-blue-600" />
+                            Wystawiona
+                            {selectedMatchDetails.invoice.fakturownia_status === 'issued' && (
+                              <Check className="ml-auto h-4 w-4 text-blue-600" />
+                            )}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )
+                  )}
                   <Button
                     variant="destructive"
                     onClick={() => {

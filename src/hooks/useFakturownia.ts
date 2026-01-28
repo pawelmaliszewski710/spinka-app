@@ -9,6 +9,14 @@ import type {
 } from '@/lib/fakturownia-api'
 import { useCompany } from '@/contexts/CompanyContext'
 
+export interface MarkAsPaidResult {
+  id: number
+  success: boolean
+  error?: string
+}
+
+export type FakturowniaStatus = 'issued' | 'sent' | 'paid' | 'partial' | 'rejected'
+
 export interface UseFakturowniaResult {
   // State
   isLoading: boolean
@@ -21,6 +29,14 @@ export interface UseFakturowniaResult {
   fetchInvoices: (params?: GetInvoicesParams) => Promise<FakturowniaInvoice[]>
   fetchUnpaidInvoices: () => Promise<FakturowniaInvoice[]>
   fetchOverdueInvoices: () => Promise<FakturowniaInvoice[]>
+
+  // Invoice Status
+  changeInvoiceStatus: (fakturowniaId: number, status: FakturowniaStatus) => Promise<boolean>
+  markInvoiceAsPaid: (fakturowniaId: number) => Promise<boolean>
+  markMultipleInvoicesAsPaid: (
+    fakturowniaIds: number[],
+    onProgress?: (completed: number, total: number) => void
+  ) => Promise<MarkAsPaidResult[]>
 
   // Clients
   clients: FakturowniaClient[]
@@ -217,6 +233,89 @@ export function useFakturownia(): UseFakturowniaResult {
     [handleError, currentCompany]
   )
 
+  const changeInvoiceStatus = useCallback(
+    async (fakturowniaId: number, status: FakturowniaStatus): Promise<boolean> => {
+      if (!currentCompany) {
+        toast.error('Nie wybrano firmy')
+        return false
+      }
+
+      setIsLoading(true)
+      setError(null)
+
+      const statusLabels: Record<FakturowniaStatus, string> = {
+        issued: 'Wystawiona',
+        sent: 'Wysłana',
+        paid: 'Opłacona',
+        partial: 'Częściowo opłacona',
+        rejected: 'Odrzucona',
+      }
+
+      try {
+        await fakturowniaApi.changeInvoiceStatus(currentCompany.id, fakturowniaId, status)
+        toast.success(`Status faktury zmieniony na "${statusLabels[status]}" w Fakturowni`)
+        return true
+      } catch (err) {
+        handleError(err)
+        return false
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [handleError, currentCompany]
+  )
+
+  const markInvoiceAsPaid = useCallback(
+    async (fakturowniaId: number): Promise<boolean> => {
+      return changeInvoiceStatus(fakturowniaId, 'paid')
+    },
+    [changeInvoiceStatus]
+  )
+
+  const markMultipleInvoicesAsPaid = useCallback(
+    async (
+      fakturowniaIds: number[],
+      onProgress?: (completed: number, total: number) => void
+    ): Promise<MarkAsPaidResult[]> => {
+      if (!currentCompany) {
+        toast.error('Nie wybrano firmy')
+        return []
+      }
+
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        const results = await fakturowniaApi.markMultipleInvoicesAsPaid(
+          currentCompany.id,
+          fakturowniaIds,
+          (completed, total) => {
+            onProgress?.(completed, total)
+          }
+        )
+
+        const successCount = results.filter(r => r.success).length
+        const failCount = results.filter(r => !r.success).length
+
+        if (failCount === 0) {
+          toast.success(`Oznaczono ${successCount} faktur jako opłacone w Fakturowni`)
+        } else if (successCount === 0) {
+          toast.error(`Nie udało się oznaczyć żadnej faktury`)
+        } else {
+          toast.warning(`Oznaczono ${successCount} z ${fakturowniaIds.length} faktur. ${failCount} nie udało się.`)
+        }
+
+        return results
+      } catch (err) {
+        handleError(err)
+        return []
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [handleError, currentCompany]
+  )
+
   return {
     isLoading,
     isConfigured,
@@ -226,6 +325,9 @@ export function useFakturownia(): UseFakturowniaResult {
     fetchInvoices,
     fetchUnpaidInvoices,
     fetchOverdueInvoices,
+    changeInvoiceStatus,
+    markInvoiceAsPaid,
+    markMultipleInvoicesAsPaid,
     clients,
     fetchClients,
     testConnection,

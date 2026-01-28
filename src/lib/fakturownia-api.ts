@@ -417,6 +417,75 @@ export async function getOverdueInvoices(companyId: string): Promise<Fakturownia
 }
 
 // ============================================
+// Invoice Status Change Methods
+// ============================================
+
+export type InvoiceStatus = 'issued' | 'sent' | 'paid' | 'partial' | 'rejected'
+
+/**
+ * Change invoice status in Fakturownia
+ * @param companyId - Company ID for credential lookup
+ * @param invoiceId - Fakturownia invoice ID (not local DB ID)
+ * @param status - New status to set
+ * @returns Updated invoice data
+ */
+export async function changeInvoiceStatus(
+  companyId: string,
+  invoiceId: number,
+  status: InvoiceStatus
+): Promise<FakturowniaInvoice> {
+  const endpoint = `/invoices/${invoiceId}/change_status.json?status=${status}`
+  return apiRequest<FakturowniaInvoice>(endpoint, companyId, { method: 'POST' })
+}
+
+/**
+ * Mark invoice as paid in Fakturownia
+ * @param companyId - Company ID for credential lookup
+ * @param invoiceId - Fakturownia invoice ID (not local DB ID)
+ * @returns Updated invoice data
+ */
+export async function markInvoiceAsPaid(
+  companyId: string,
+  invoiceId: number
+): Promise<FakturowniaInvoice> {
+  return changeInvoiceStatus(companyId, invoiceId, 'paid')
+}
+
+/**
+ * Mark multiple invoices as paid in Fakturownia
+ * @param companyId - Company ID for credential lookup
+ * @param invoiceIds - Array of Fakturownia invoice IDs
+ * @param onProgress - Optional callback for progress updates
+ * @returns Results for each invoice (success/failure)
+ */
+export async function markMultipleInvoicesAsPaid(
+  companyId: string,
+  invoiceIds: number[],
+  onProgress?: (completed: number, total: number, current: { id: number; success: boolean; error?: string }) => void
+): Promise<{ id: number; success: boolean; error?: string }[]> {
+  const results: { id: number; success: boolean; error?: string }[] = []
+
+  for (let i = 0; i < invoiceIds.length; i++) {
+    const id = invoiceIds[i]
+    try {
+      await markInvoiceAsPaid(companyId, id)
+      results.push({ id, success: true })
+      onProgress?.(i + 1, invoiceIds.length, { id, success: true })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      results.push({ id, success: false, error: errorMessage })
+      onProgress?.(i + 1, invoiceIds.length, { id, success: false, error: errorMessage })
+    }
+    // Small delay to avoid rate limiting
+    if (i < invoiceIds.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+  }
+
+  return results
+}
+
+// ============================================
 // Pagination & Filtering for Import
 // ============================================
 
@@ -548,6 +617,11 @@ export const fakturowniaApi = {
   openInvoicePdf,
   getUnpaidInvoices,
   getOverdueInvoices,
+
+  // Invoice Status
+  changeInvoiceStatus,
+  markInvoiceAsPaid,
+  markMultipleInvoicesAsPaid,
 
   // Pagination & Filtering
   getAllInvoicesPaginated,
