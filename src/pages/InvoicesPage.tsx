@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/layout'
 import { InvoiceImport } from '@/components/import'
+import { useCompany } from '@/contexts/CompanyContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,6 +52,7 @@ const STATUS_BADGES: Record<string, PaymentStatusBadge> = {
 }
 
 export function InvoicesPage(): React.JSX.Element {
+  const { currentCompany } = useCompany()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -60,11 +62,18 @@ export function InvoicesPage(): React.JSX.Element {
   const [copiedField, setCopiedField] = useState<string | null>(null)
 
   const fetchInvoices = useCallback(async () => {
+    if (!currentCompany) {
+      setInvoices([])
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
       const { data, error } = await supabase
         .from('invoices')
         .select('*')
+        .eq('company_id', currentCompany.id)
         .order('due_date', { ascending: true })
 
       if (error) {
@@ -78,26 +87,32 @@ export function InvoicesPage(): React.JSX.Element {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentCompany])
 
   useEffect(() => {
     fetchInvoices()
   }, [fetchInvoices])
 
+  // Refetch when company changes
+  useEffect(() => {
+    if (currentCompany) {
+      fetchInvoices()
+    }
+  }, [currentCompany?.id, fetchInvoices])
+
   const handleDeleteAllInvoices = async () => {
+    if (!currentCompany) {
+      toast.error('Wybierz firmę')
+      return
+    }
+
     setIsDeleting(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        toast.error('Sesja wygasła. Zaloguj się ponownie.')
-        return
-      }
-
-      // First delete all matches for user's invoices
+      // First delete all matches for this company's invoices
       const { error: matchError } = await supabase
         .from('matches')
         .delete()
-        .eq('user_id', user.id)
+        .eq('company_id', currentCompany.id)
 
       if (matchError) {
         console.error('Error deleting matches:', matchError)
@@ -105,11 +120,11 @@ export function InvoicesPage(): React.JSX.Element {
         return
       }
 
-      // Then delete all invoices
+      // Then delete all invoices for this company
       const { error } = await supabase
         .from('invoices')
         .delete()
-        .eq('user_id', user.id)
+        .eq('company_id', currentCompany.id)
 
       if (error) {
         console.error('Error deleting invoices:', error)

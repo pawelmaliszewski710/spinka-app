@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/layout'
 import { PaymentImport } from '@/components/import'
+import { useCompany } from '@/contexts/CompanyContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,6 +33,7 @@ import { BlurFade } from '@/components/ui/blur-fade'
 import { NumberTicker } from '@/components/ui/number-ticker'
 
 export function PaymentsPage(): React.JSX.Element {
+  const { currentCompany } = useCompany()
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -39,11 +41,18 @@ export function PaymentsPage(): React.JSX.Element {
   const [isDeleting, setIsDeleting] = useState(false)
 
   const fetchPayments = useCallback(async () => {
+    if (!currentCompany) {
+      setPayments([])
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
       const { data, error } = await supabase
         .from('payments')
         .select('*')
+        .eq('company_id', currentCompany.id)
         .order('transaction_date', { ascending: false })
 
       if (error) {
@@ -57,26 +66,32 @@ export function PaymentsPage(): React.JSX.Element {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentCompany])
 
   useEffect(() => {
     fetchPayments()
   }, [fetchPayments])
 
+  // Refetch when company changes
+  useEffect(() => {
+    if (currentCompany) {
+      fetchPayments()
+    }
+  }, [currentCompany?.id, fetchPayments])
+
   const handleDeleteAllPayments = async () => {
+    if (!currentCompany) {
+      toast.error('Wybierz firmę')
+      return
+    }
+
     setIsDeleting(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        toast.error('Sesja wygasła. Zaloguj się ponownie.')
-        return
-      }
-
-      // First delete all matches for user's payments
+      // First delete all matches for this company
       const { error: matchError } = await supabase
         .from('matches')
         .delete()
-        .eq('user_id', user.id)
+        .eq('company_id', currentCompany.id)
 
       if (matchError) {
         console.error('Error deleting matches:', matchError)
@@ -88,18 +103,18 @@ export function PaymentsPage(): React.JSX.Element {
       const { error: invoiceError } = await supabase
         .from('invoices')
         .update({ payment_status: 'pending' })
-        .eq('user_id', user.id)
+        .eq('company_id', currentCompany.id)
         .eq('payment_status', 'paid')
 
       if (invoiceError) {
         console.error('Error resetting invoice statuses:', invoiceError)
       }
 
-      // Then delete all payments
+      // Then delete all payments for this company
       const { error } = await supabase
         .from('payments')
         .delete()
-        .eq('user_id', user.id)
+        .eq('company_id', currentCompany.id)
 
       if (error) {
         console.error('Error deleting payments:', error)
