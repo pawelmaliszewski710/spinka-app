@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useCompany } from '@/contexts/CompanyContext'
 import { findMatchesExtended, calculateMatchConfidence } from '@/lib/matching'
+import { RESOURCE_LIMITS } from '@/lib/constants'
 import type { Invoice, Payment, Match, MatchResult, MatchSuggestion, GroupMatchSuggestion } from '@/types'
 
 export interface MatchingProgress {
@@ -154,6 +155,23 @@ export function useMatching(): UseMatchingResult {
       return
     }
 
+    // Resource limit validation
+    const totalRecords = unmatchedInvoices.length + unmatchedPayments.length
+
+    if (totalRecords > RESOURCE_LIMITS.MAX_TOTAL_RECORDS) {
+      toast.error(
+        `Zbyt dużo rekordów (${totalRecords}). Maksimum: ${RESOURCE_LIMITS.MAX_TOTAL_RECORDS}. ` +
+        `Zmniejsz zakres dat lub podziel dane na partie.`
+      )
+      return
+    }
+
+    if (totalRecords > RESOURCE_LIMITS.WARNING_THRESHOLD) {
+      toast.warning(
+        `Przetwarzanie ${totalRecords} rekordów. Może to chwilę potrwać...`
+      )
+    }
+
     setIsProcessing(true)
     setProgress({ current: 0, total: 100, phase: 'analyzing', message: 'Analizowanie płatności...' })
 
@@ -179,6 +197,14 @@ export function useMatching(): UseMatchingResult {
         maxMonthsToGroup: 2,
         debug: true,
       })
+
+      // Handle resource limit errors from algorithm
+      if (result.error) {
+        toast.error(result.error)
+        setProgress(null)
+        setIsProcessing(false)
+        return
+      }
 
       console.log('🔄 useMatching.runAutoMatch() - wyniki z findMatchesExtended:')
       console.log(`   autoMatches: ${result.autoMatches.length}`)

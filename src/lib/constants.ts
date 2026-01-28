@@ -4,8 +4,20 @@ export const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 // Matching algorithm thresholds
 export const CONFIDENCE_THRESHOLDS = {
   HIGH: 0.85, // Auto-match threshold
-  MEDIUM: 0.1, // Suggestion threshold (lowered to show more potential matches)
+  MEDIUM: 0.35, // Suggestion threshold (increased to reduce noise)
   LOW: 0.0, // No match
+} as const
+
+// Resource limits to prevent browser crashes
+export const RESOURCE_LIMITS = {
+  MAX_INPUT_INVOICES: 500,
+  MAX_INPUT_PAYMENTS: 500,
+  MAX_TOTAL_RECORDS: 1000,
+  MAX_COMPARISONS: 50000,
+  MAX_SUGGESTIONS: 500,
+  MAX_GROUP_SUGGESTIONS: 100,
+  SUGGESTIONS_PER_PAGE: 50,
+  WARNING_THRESHOLD: 200,
 } as const
 
 // Matching weights

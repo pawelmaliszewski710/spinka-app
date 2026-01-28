@@ -1,6 +1,6 @@
 import type { Invoice, Payment } from '@/types'
 import type { MatchResult, MatchBreakdown, GroupMatchSuggestion, MatchSuggestion } from '@/types'
-import { MATCHING_WEIGHTS, CONFIDENCE_THRESHOLDS } from '@/lib/constants'
+import { MATCHING_WEIGHTS, CONFIDENCE_THRESHOLDS, RESOURCE_LIMITS } from '@/lib/constants'
 import {
   extractMultipleInvoiceNumbers,
   extractNIP,
@@ -657,9 +657,36 @@ export function findMatches(
   suggestions: MatchResult[]
   unmatchedInvoices: string[]
   unmatchedPayments: string[]
+  error?: string
 } {
+  // Resource limit validation
+  const totalRecords = invoices.length + payments.length
+  const totalComparisons = invoices.length * payments.length
+
+  if (totalRecords > RESOURCE_LIMITS.MAX_TOTAL_RECORDS) {
+    console.error(`[RESOURCE_LIMIT] Przekroczono limit rekordów: ${totalRecords}/${RESOURCE_LIMITS.MAX_TOTAL_RECORDS}`)
+    return {
+      autoMatches: [],
+      suggestions: [],
+      unmatchedInvoices: invoices.map(i => i.id),
+      unmatchedPayments: payments.map(p => p.id),
+      error: `Zbyt dużo rekordów (${totalRecords}). Maksimum: ${RESOURCE_LIMITS.MAX_TOTAL_RECORDS}. Podziel dane na mniejsze partie.`
+    }
+  }
+
+  if (totalComparisons > RESOURCE_LIMITS.MAX_COMPARISONS) {
+    console.error(`[RESOURCE_LIMIT] Przekroczono limit porównań: ${totalComparisons}/${RESOURCE_LIMITS.MAX_COMPARISONS}`)
+    return {
+      autoMatches: [],
+      suggestions: [],
+      unmatchedInvoices: invoices.map(i => i.id),
+      unmatchedPayments: payments.map(p => p.id),
+      error: `Zbyt dużo porównań (${invoices.length} × ${payments.length} = ${totalComparisons}). Zmniejsz zakres dat lub podziel dane.`
+    }
+  }
+
   const autoMatches: MatchResult[] = []
-  const suggestions: MatchResult[] = []
+  let suggestions: MatchResult[] = []
   const matchedInvoiceIds = new Set<string>()
   const matchedPaymentIds = new Set<string>()
 
@@ -746,6 +773,14 @@ export function findMatches(
       suggestions.push(match)
       // Don't mark as matched yet - these are just suggestions
     }
+  }
+
+  // Apply resource limit on suggestions
+  if (suggestions.length > RESOURCE_LIMITS.MAX_SUGGESTIONS) {
+    console.warn(`[RESOURCE_LIMIT] Obcięto sugestie: ${suggestions.length} → ${RESOURCE_LIMITS.MAX_SUGGESTIONS}`)
+    suggestions = suggestions
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, RESOURCE_LIMITS.MAX_SUGGESTIONS)
   }
 
   // Find unmatched invoices and payments
@@ -1183,6 +1218,7 @@ export function findMatchesExtended(
   groupSuggestions: GroupMatchSuggestion[]
   unmatchedInvoices: string[]
   unmatchedPayments: string[]
+  error?: string
 } {
   const {
     enableGroupMatching = true,
@@ -1192,6 +1228,18 @@ export function findMatchesExtended(
 
   // 1. Run standard matching first
   const standardResults = findMatches(invoices, payments, debug)
+
+  // Propagate error from findMatches
+  if (standardResults.error) {
+    return {
+      autoMatches: [],
+      suggestions: [],
+      groupSuggestions: [],
+      unmatchedInvoices: standardResults.unmatchedInvoices,
+      unmatchedPayments: standardResults.unmatchedPayments,
+      error: standardResults.error,
+    }
+  }
 
   if (!enableGroupMatching) {
     return {
@@ -1375,11 +1423,22 @@ export function findMatchesExtended(
   // TODO: If needed, re-enable with stricter criteria (e.g., amount within 20%)
 
   // Combine all suggestions (only from standard matching, not buyer suggestions)
-  const allSuggestions = [...standardResults.suggestions]
+  let allSuggestions = [...standardResults.suggestions]
 
   // Sort by confidence
   allSuggestions.sort((a, b) => b.confidence - a.confidence)
   groupSuggestions.sort((a, b) => b.confidence - a.confidence)
+
+  // Apply resource limits
+  if (allSuggestions.length > RESOURCE_LIMITS.MAX_SUGGESTIONS) {
+    console.warn(`[RESOURCE_LIMIT] Obcięto sugestie: ${allSuggestions.length} → ${RESOURCE_LIMITS.MAX_SUGGESTIONS}`)
+    allSuggestions = allSuggestions.slice(0, RESOURCE_LIMITS.MAX_SUGGESTIONS)
+  }
+
+  if (groupSuggestions.length > RESOURCE_LIMITS.MAX_GROUP_SUGGESTIONS) {
+    console.warn(`[RESOURCE_LIMIT] Obcięto sugestie grupowe: ${groupSuggestions.length} → ${RESOURCE_LIMITS.MAX_GROUP_SUGGESTIONS}`)
+    groupSuggestions.splice(RESOURCE_LIMITS.MAX_GROUP_SUGGESTIONS)
+  }
 
   // Recalculate unmatched lists
   // Note: Group suggestions are not auto-matched, they're suggestions that require user confirmation

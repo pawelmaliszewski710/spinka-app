@@ -63,6 +63,8 @@ import {
   CreditCard,
   Search,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   BarChart3,
   FileText,
   Building2,
@@ -81,6 +83,7 @@ import type { GroupMatchSuggestion } from '@/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { InvoiceAnalytics } from '@/components/analytics/InvoiceAnalytics'
+import { RESOURCE_LIMITS } from '@/lib/constants'
 
 // Helper to copy text to clipboard
 function copyToClipboard(text: string) {
@@ -132,6 +135,7 @@ export function MatchingPage(): React.JSX.Element {
 
   const [selectedTab, setSelectedTab] = useState<'suggestions' | 'confirmed' | 'unmatched' | 'payments'>('suggestions')
   const [analyticsOpen, setAnalyticsOpen] = useState(true)
+  const [suggestionPage, setSuggestionPage] = useState(0)
   const [selectedMatchDetails, setSelectedMatchDetails] = useState<{
     match: typeof confirmedMatches[number]
     invoice: ReturnType<typeof invoicesCache.get>
@@ -159,6 +163,19 @@ export function MatchingPage(): React.JSX.Element {
 
   // Get all invoices as array for analytics
   const allInvoices = useMemo(() => Array.from(invoicesCache.values()), [invoicesCache])
+
+  // Paginated suggestions to prevent browser crash
+  const paginatedSuggestions = useMemo(() => {
+    const start = suggestionPage * RESOURCE_LIMITS.SUGGESTIONS_PER_PAGE
+    return suggestions.slice(start, start + RESOURCE_LIMITS.SUGGESTIONS_PER_PAGE)
+  }, [suggestions, suggestionPage])
+
+  const totalSuggestionPages = Math.ceil(suggestions.length / RESOURCE_LIMITS.SUGGESTIONS_PER_PAGE)
+
+  // Reset page when suggestions change
+  useEffect(() => {
+    setSuggestionPage(0)
+  }, [suggestions])
 
   // Manual matching state (method 1 - by ID)
   const [manualInvoiceId, setManualInvoiceId] = useState('')
@@ -543,8 +560,24 @@ export function MatchingPage(): React.JSX.Element {
                             <h4 className="mb-2 text-sm font-medium text-yellow-600">
                               Potencjalne dopasowania ({suggestions.length})
                             </h4>
+
+                            {/* Warning banner for many suggestions */}
+                            {suggestions.length > RESOURCE_LIMITS.WARNING_THRESHOLD && (
+                              <div className="mb-3 flex items-center gap-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 dark:border-yellow-900 dark:bg-yellow-900/20">
+                                <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0" />
+                                <div className="text-sm">
+                                  <span className="font-medium text-yellow-800 dark:text-yellow-200">
+                                    Dużo sugestii ({suggestions.length})
+                                  </span>
+                                  <span className="text-yellow-700 dark:text-yellow-300 ml-1">
+                                    - rozważ zmniejszenie zakresu dat lub podzielenie danych na partie.
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
                             <div className="space-y-2">
-                              {suggestions.map((suggestion) => (
+                              {paginatedSuggestions.map((suggestion) => (
                                 <SuggestionCard
                                   key={`${suggestion.invoice.id}-${suggestion.payment.id}`}
                                   suggestion={suggestion}
@@ -558,6 +591,33 @@ export function MatchingPage(): React.JSX.Element {
                                 />
                               ))}
                             </div>
+
+                            {/* Pagination controls */}
+                            {totalSuggestionPages > 1 && (
+                              <div className="flex items-center justify-center gap-2 py-4 border-t mt-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={suggestionPage === 0}
+                                  onClick={() => setSuggestionPage(p => p - 1)}
+                                >
+                                  <ChevronLeft className="h-4 w-4 mr-1" />
+                                  Poprzednie
+                                </Button>
+                                <span className="text-sm text-muted-foreground px-2">
+                                  Strona {suggestionPage + 1} z {totalSuggestionPages}
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={suggestionPage >= totalSuggestionPages - 1}
+                                  onClick={() => setSuggestionPage(p => p + 1)}
+                                >
+                                  Następne
+                                  <ChevronRight className="h-4 w-4 ml-1" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
