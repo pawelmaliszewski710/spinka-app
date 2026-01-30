@@ -59,7 +59,7 @@ export function RegisterPage(): React.JSX.Element {
         />
         <BlurFade delay={0.1}>
           <ShineBorder
-            className="w-full max-w-md"
+            className="w-full max-w-lg"
             color={["#22c55e", "#10b981", "#059669"]}
             borderRadius={16}
             borderWidth={2}
@@ -94,7 +94,7 @@ export function RegisterPage(): React.JSX.Element {
 
       <BlurFade delay={0.2}>
         <ShineBorder
-          className="w-full max-w-md"
+          className="w-full max-w-lg"
           color={["#3b82f6", "#8b5cf6", "#06b6d4"]}
           borderRadius={16}
           borderWidth={2}
