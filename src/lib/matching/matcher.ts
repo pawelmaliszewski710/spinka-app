@@ -182,8 +182,8 @@ function calculateInvoiceNumberScore(
     // Fallback: tylko jeśli jeden jest PREFIKSEM drugiego (nie dowolny substring)
     if (normalizedExtracted.startsWith(normalizedInvoiceNumber) ||
         normalizedInvoiceNumber.startsWith(normalizedExtracted)) {
-      if (isDebugCase) console.log(`   Prefix match! Returning 0.7`)
-      return 0.7  // Niższy score dla prefix match
+      if (isDebugCase) console.log(`   Prefix match! Returning 0.1`)
+      return 0.1  // Bardzo niski score - tylko prefix pasuje
     }
   }
 
@@ -216,8 +216,8 @@ function calculateInvoiceNumberScore(
     // Tylko jeśli ostatnie 4 cyfry są IDENTYCZNE (ten sam rok)
     // I tytuł nie zawiera pełnego numeru faktury w innym formacie (już sprawdzone wcześniej)
     if (lastDigits === searchLastDigits && lastDigits.length === 4) {
-      if (isDebugCase) console.log(`   ✓ Last 4 digits (year) match! Returning 0.3`)
-      return 0.3 // Bardzo niski score - tylko rok się zgadza
+      if (isDebugCase) console.log(`   ✓ Last 4 digits (year) match! Returning 0.1`)
+      return 0.1 // Minimalny score - tylko rok się zgadza
     }
   }
 
@@ -289,12 +289,12 @@ function calculateDateScore(dueDate: string, paymentDate: string): number {
     (payment.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)
   )
 
-  if (daysDiff <= 3) return 1.0 // Within 3 days of due date
-  if (daysDiff <= 7) return 0.9 // Within a week
-  if (daysDiff <= 14) return 0.8 // Within 2 weeks
-  if (daysDiff <= 30) return 0.6 // Within a month
-  if (daysDiff <= 60) return 0.4 // Within 2 months
-  if (daysDiff <= 90) return 0.2 // Within 3 months
+  if (daysDiff <= 8) return 1.0 // Within ~1 week of due date
+  if (daysDiff <= 13) return 0.9 // Within ~2 weeks
+  if (daysDiff <= 19) return 0.8 // Within ~3 weeks
+  if (daysDiff <= 35) return 0.6 // Within ~1 month
+  if (daysDiff <= 65) return 0.4 // Within ~2 months
+  if (daysDiff <= 95) return 0.2 // Within ~3 months
 
   return 0.1 // More than 3 months
 }
@@ -490,8 +490,9 @@ export function calculateMatchConfidence(
     }
   }
 
-  // RULE: If invoice number in title + amount matches = high confidence (even without name)
-  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9) {
+  // RULE: If invoice number in title + amount matches + name somewhat matches = high confidence
+  // UWAGA: Nazwa musi pasować przynajmniej częściowo (>= 0.5), żeby dać auto-match
+  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && nameScore >= 0.5) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -502,7 +503,7 @@ export function calculateMatchConfidence(
     }
 
     if (debug) {
-      console.log(`   ✅ WYSOKIE DOPASOWANIE: Nr faktury + kwota = 95%`)
+      console.log(`   ✅ WYSOKIE DOPASOWANIE: Nr faktury + kwota + nazwa = 95%`)
     }
 
     return {
@@ -513,6 +514,35 @@ export function calculateMatchConfidence(
       reasons: [
         'Numer faktury znaleziony w tytule',
         `Kwota zgodna: ${payment.amount.toFixed(2)} PLN`,
+        'Nazwa nadawcy pasuje do nabywcy',
+      ],
+    }
+  }
+
+  // RULE: If invoice number + amount matches but name doesn't = only suggestion (not auto-match)
+  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && nameScore < 0.5) {
+    const breakdown: MatchBreakdown = {
+      subaccount: subaccountScore,
+      amount: amountScore,
+      invoiceNumber: invoiceNumberScore,
+      name: nameScore,
+      nip: nipScore,
+      date: dateScore,
+    }
+
+    if (debug) {
+      console.log(`   ⚠️ SUGESTIA: Nr faktury + kwota pasują, ale nazwa NIE (${nameScore.toFixed(2)} < 0.5)`)
+    }
+
+    return {
+      invoiceId: invoice.id,
+      paymentId: payment.id,
+      confidence: 0.80, // Below auto-match threshold (0.85)
+      breakdown,
+      reasons: [
+        'Numer faktury znaleziony w tytule',
+        `Kwota zgodna: ${payment.amount.toFixed(2)} PLN`,
+        '⚠️ Nazwa nadawcy nie zgadza się z nabywcą - wymaga weryfikacji',
       ],
     }
   }
@@ -623,7 +653,24 @@ export function calculateMatchConfidence(
     reasons.push(`Płatność blisko terminu`)
   }
 
-  const finalConfidence = Math.round(confidence * 100) / 100
+  let finalConfidence = Math.round(confidence * 100) / 100
+
+  // === BLOKADA: Nazwa musi pasować do auto-match ===
+  // Jeśli nazwa nadawcy NIE pasuje do nabywcy faktury (score < 0.5),
+  // NIGDY nie dawaj auto-match, nawet jeśli inne kryteria pasują
+  const NAME_MATCH_THRESHOLD_FOR_AUTO = 0.5
+  if (nameScore < NAME_MATCH_THRESHOLD_FOR_AUTO && finalConfidence >= CONFIDENCE_THRESHOLDS.HIGH) {
+    // Obniż confidence poniżej progu auto-match
+    const adjustedConfidence = CONFIDENCE_THRESHOLDS.HIGH - 0.01 // 0.84
+
+    if (debug) {
+      console.log(`   ⚠️ BLOKADA: Nazwa nie pasuje (${nameScore.toFixed(2)} < 0.5)`)
+      console.log(`      Confidence obniżone: ${finalConfidence} → ${adjustedConfidence}`)
+    }
+
+    reasons.push('⚠️ Nazwa nadawcy nie zgadza się z nabywcą - wymaga weryfikacji')
+    finalConfidence = adjustedConfidence
+  }
 
   if (debug) {
     const thresholdStatus = finalConfidence >= CONFIDENCE_THRESHOLDS.HIGH
