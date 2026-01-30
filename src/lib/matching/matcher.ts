@@ -723,18 +723,55 @@ export function findMatches(
     console.log('-'.repeat(80))
   }
 
+  // === OPTYMALIZACJA: Indeksowanie płatności po walucie i buckecie kwoty ===
+  const BUCKET_SIZE = 100 // PLN
+  const paymentIndex = new Map<string, typeof payments>()
+
+  for (const payment of payments) {
+    const currency = payment.currency || 'PLN'
+    const bucket = Math.floor(payment.amount / BUCKET_SIZE) * BUCKET_SIZE
+    const key = `${currency}-${bucket}`
+
+    if (!paymentIndex.has(key)) {
+      paymentIndex.set(key, [])
+    }
+    paymentIndex.get(key)!.push(payment)
+  }
+
+  // Helper do pobierania kandydatów z sąsiednich bucketów
+  function getCandidatePayments(invoice: Invoice): typeof payments {
+    const currency = invoice.currency || 'PLN'
+    const amount = invoice.gross_amount
+    const tolerance = Math.max(amount * 0.1, 50) // 10% lub min 50 zł
+
+    const minBucket = Math.floor((amount - tolerance) / BUCKET_SIZE) * BUCKET_SIZE
+    const maxBucket = Math.floor((amount + tolerance) / BUCKET_SIZE) * BUCKET_SIZE
+
+    const candidates: typeof payments = []
+    for (let b = minBucket; b <= maxBucket; b += BUCKET_SIZE) {
+      const key = `${currency}-${b}`
+      const bucketed = paymentIndex.get(key)
+      if (bucketed) candidates.push(...bucketed)
+    }
+
+    return candidates
+  }
+
+  if (debug) {
+    const bucketCount = paymentIndex.size
+    console.log(`\n🔧 OPTYMALIZACJA: Utworzono ${bucketCount} bucketów płatności`)
+  }
+
   // Calculate all potential matches
   const allMatches: MatchResult[] = []
-  let skippedCurrencyMismatch = 0
+  let actualComparisons = 0
 
   for (const invoice of matchableInvoices) {
-    for (const payment of payments) {
-      // Skip if currencies don't match
-      if (invoice.currency !== payment.currency) {
-        skippedCurrencyMismatch++
-        continue
-      }
+    // Pobierz tylko płatności z odpowiednich bucketów (ta sama waluta + podobna kwota)
+    const candidatePayments = getCandidatePayments(invoice)
 
+    for (const payment of candidatePayments) {
+      actualComparisons++
       const result = calculateMatchConfidence(invoice, payment, debug)
 
       // Only consider matches with some confidence
@@ -750,9 +787,15 @@ export function findMatches(
   }
 
   if (debug) {
+    const theoreticalComparisons = matchableInvoices.length * payments.length
+    const reduction = theoreticalComparisons > 0
+      ? Math.round((1 - actualComparisons / theoreticalComparisons) * 100)
+      : 0
     console.log('\n' + '-'.repeat(80))
     console.log(`📊 PODSUMOWANIE PORÓWNAŃ:`)
-    console.log(`   - Pominięto (różne waluty): ${skippedCurrencyMismatch}`)
+    console.log(`   - Teoretyczne porównania (bez optymalizacji): ${theoreticalComparisons}`)
+    console.log(`   - Faktyczne porównania (z bucketami): ${actualComparisons}`)
+    console.log(`   - Redukcja: ${reduction}%`)
     console.log(`   - Potencjalne dopasowania: ${allMatches.length}`)
   }
 
