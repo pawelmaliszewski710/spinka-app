@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Loader2, CheckCircle2, AlertTriangle, Eye, EyeOff, Globe, ExternalLink, ZoomIn } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertTriangle, Eye, EyeOff, Globe, ZoomIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'

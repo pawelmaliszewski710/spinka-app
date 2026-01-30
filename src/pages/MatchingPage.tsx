@@ -201,11 +201,7 @@ export function MatchingPage(): React.JSX.Element {
     setSuggestionPage(0)
   }, [suggestions])
 
-  // Manual matching state (method 1 - by ID)
-  const [manualInvoiceId, setManualInvoiceId] = useState('')
-  const [manualPaymentId, setManualPaymentId] = useState('')
-
-  // Manual matching state (method 2 - with search)
+  // Manual matching state (with search)
   const [searchInvoiceId, setSearchInvoiceId] = useState('')
   const [paymentSearchQuery, setPaymentSearchQuery] = useState('')
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
@@ -227,16 +223,6 @@ export function MatchingPage(): React.JSX.Element {
         )
       }).slice(0, 10) // Limit to 10 results
     : []
-
-  const handleManualMatch = async () => {
-    if (!manualInvoiceId.trim() || !manualPaymentId.trim()) {
-      toast.error('Podaj ID faktury i płatności')
-      return
-    }
-    await createManualMatch(manualInvoiceId.trim(), manualPaymentId.trim())
-    setManualInvoiceId('')
-    setManualPaymentId('')
-  }
 
   const handleSearchMatch = async () => {
     if (!searchInvoiceId.trim() || !selectedPaymentId) {
@@ -346,8 +332,8 @@ export function MatchingPage(): React.JSX.Element {
     return [...confirmedMatches].sort((a, b) => {
       const invoiceA = invoicesCache.get(a.invoice_id)
       const invoiceB = invoicesCache.get(b.invoice_id)
-      const paymentA = paymentsCache.get(a.payment_id)
-      const paymentB = paymentsCache.get(b.payment_id)
+      const _paymentA = paymentsCache.get(a.payment_id)
+      const _paymentB = paymentsCache.get(b.payment_id)
 
       let comparison = 0
       switch (confirmedMatchesSort.column) {
