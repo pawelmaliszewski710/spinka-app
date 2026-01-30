@@ -128,7 +128,6 @@ export function MatchingPage(): React.JSX.Element {
     removeMatch,
     deleteInvoice,
     deletePayment,
-    updateInvoicePaymentStatus,
     updateInvoiceFakturowniaStatus,
     refresh,
   } = useMatching()

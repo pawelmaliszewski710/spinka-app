@@ -102,7 +102,9 @@ export function RegisterPage(): React.JSX.Element {
           <Card className="w-full border-0 bg-background/80 backdrop-blur-sm">
             <CardHeader className="text-center">
               <BlurFade delay={0.3}>
-                <CardTitle className="text-2xl font-bold">InvoiceMatch</CardTitle>
+                <div className="flex justify-center mb-2">
+                  <img src="/spinka-logo.png" alt="Spinka" className="h-16 w-auto" />
+                </div>
               </BlurFade>
               <BlurFade delay={0.4}>
                 <CardDescription>Utwórz nowe konto</CardDescription>

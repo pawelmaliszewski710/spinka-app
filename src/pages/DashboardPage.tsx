@@ -59,8 +59,8 @@ export function DashboardPage(): React.JSX.Element {
         <div className="flex flex-col items-center justify-center py-12">
           <BlurFade delay={0.1}>
             <div className="text-center">
-              <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
-              <h1 className="mt-4 text-2xl font-bold">Witaj w InvoiceMatch!</h1>
+              <img src="/spinka-logo.png" alt="Spinka" className="mx-auto h-16 w-auto" />
+              <h1 className="mt-4 text-2xl font-bold">Witaj w Spinka!</h1>
               <p className="mt-2 text-muted-foreground">
                 Rozpocznij od importu faktur, aby móc dopasowywać je do płatności.
               </p>

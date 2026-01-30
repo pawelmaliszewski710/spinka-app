@@ -12,6 +12,7 @@ dist
 dist-ssr
 
 # Environment files
+.env
 .env.local
 .env.*.local
 
@@ -33,3 +34,5 @@ test-results
 
 # Supabase
 .supabase
+
+.vercel
