@@ -75,6 +75,9 @@ import {
   Info,
   Send,
   AlertCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import { useMatching } from '@/hooks/useMatching'
 import { useFakturownia } from '@/hooks/useFakturownia'
@@ -140,6 +143,27 @@ export function MatchingPage(): React.JSX.Element {
     invoice: ReturnType<typeof invoicesCache.get>
     payment: ReturnType<typeof paymentsCache.get>
   } | null>(null)
+
+  // Sorting state for tables
+  type SortDirection = 'asc' | 'desc' | null
+  type ConfirmedMatchesSortColumn = 'invoice_number' | 'buyer_name' | 'amount' | 'confidence' | 'match_type'
+  type UnmatchedInvoicesSortColumn = 'invoice_number' | 'buyer_name' | 'amount' | 'due_date'
+  type UnmatchedPaymentsSortColumn = 'transaction_date' | 'sender_name' | 'title' | 'amount'
+
+  const [confirmedMatchesSort, setConfirmedMatchesSort] = useState<{
+    column: ConfirmedMatchesSortColumn | null
+    direction: SortDirection
+  }>({ column: null, direction: null })
+
+  const [unmatchedInvoicesSort, setUnmatchedInvoicesSort] = useState<{
+    column: UnmatchedInvoicesSortColumn | null
+    direction: SortDirection
+  }>({ column: null, direction: null })
+
+  const [unmatchedPaymentsSort, setUnmatchedPaymentsSort] = useState<{
+    column: UnmatchedPaymentsSortColumn | null
+    direction: SortDirection
+  }>({ column: null, direction: null })
 
   // Fakturownia integration
   const {
@@ -311,6 +335,121 @@ export function MatchingPage(): React.JSX.Element {
         invoice.fakturownia_id !== null
       )
   }, [confirmedMatches, invoicesCache])
+
+  // Sorted confirmed matches
+  const sortedConfirmedMatches = useMemo(() => {
+    if (!confirmedMatchesSort.column || !confirmedMatchesSort.direction) {
+      return confirmedMatches
+    }
+
+    return [...confirmedMatches].sort((a, b) => {
+      const invoiceA = invoicesCache.get(a.invoice_id)
+      const invoiceB = invoicesCache.get(b.invoice_id)
+      const paymentA = paymentsCache.get(a.payment_id)
+      const paymentB = paymentsCache.get(b.payment_id)
+
+      let comparison = 0
+      switch (confirmedMatchesSort.column) {
+        case 'invoice_number':
+          comparison = (invoiceA?.invoice_number || '').localeCompare(invoiceB?.invoice_number || '')
+          break
+        case 'buyer_name':
+          comparison = (invoiceA?.buyer_name || '').localeCompare(invoiceB?.buyer_name || '')
+          break
+        case 'amount':
+          comparison = (invoiceA?.gross_amount || 0) - (invoiceB?.gross_amount || 0)
+          break
+        case 'confidence':
+          comparison = a.confidence_score - b.confidence_score
+          break
+        case 'match_type':
+          comparison = a.match_type.localeCompare(b.match_type)
+          break
+      }
+
+      return confirmedMatchesSort.direction === 'asc' ? comparison : -comparison
+    })
+  }, [confirmedMatches, confirmedMatchesSort, invoicesCache, paymentsCache])
+
+  // Sorted unmatched invoices
+  const sortedUnmatchedInvoices = useMemo(() => {
+    if (!unmatchedInvoicesSort.column || !unmatchedInvoicesSort.direction) {
+      return unmatchedInvoices
+    }
+
+    return [...unmatchedInvoices].sort((a, b) => {
+      let comparison = 0
+      switch (unmatchedInvoicesSort.column) {
+        case 'invoice_number':
+          comparison = a.invoice_number.localeCompare(b.invoice_number)
+          break
+        case 'buyer_name':
+          comparison = a.buyer_name.localeCompare(b.buyer_name)
+          break
+        case 'amount':
+          comparison = a.gross_amount - b.gross_amount
+          break
+        case 'due_date':
+          comparison = new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+          break
+      }
+
+      return unmatchedInvoicesSort.direction === 'asc' ? comparison : -comparison
+    })
+  }, [unmatchedInvoices, unmatchedInvoicesSort])
+
+  // Sorted unmatched payments
+  const sortedUnmatchedPayments = useMemo(() => {
+    if (!unmatchedPaymentsSort.column || !unmatchedPaymentsSort.direction) {
+      return unmatchedPayments
+    }
+
+    return [...unmatchedPayments].sort((a, b) => {
+      let comparison = 0
+      switch (unmatchedPaymentsSort.column) {
+        case 'transaction_date':
+          comparison = new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
+          break
+        case 'sender_name':
+          comparison = (a.sender_name || '').localeCompare(b.sender_name || '')
+          break
+        case 'title':
+          comparison = (a.title || '').localeCompare(b.title || '')
+          break
+        case 'amount':
+          comparison = a.amount - b.amount
+          break
+      }
+
+      return unmatchedPaymentsSort.direction === 'asc' ? comparison : -comparison
+    })
+  }, [unmatchedPayments, unmatchedPaymentsSort])
+
+  // Helper function to toggle sort
+  function toggleSort<T>(
+    column: T,
+    currentSort: { column: T | null; direction: SortDirection },
+    setSort: React.Dispatch<React.SetStateAction<{ column: T | null; direction: SortDirection }>>
+  ) {
+    if (currentSort.column !== column) {
+      setSort({ column, direction: 'asc' })
+    } else if (currentSort.direction === 'asc') {
+      setSort({ column, direction: 'desc' })
+    } else {
+      setSort({ column: null, direction: null })
+    }
+  }
+
+  // Sort icon component
+  function SortIcon({ column, currentSort }: { column: string; currentSort: { column: string | null; direction: SortDirection } }) {
+    if (currentSort.column !== column) {
+      return <ArrowUpDown className="ml-1 h-3 w-3 opacity-50" />
+    }
+    if (currentSort.direction === 'asc') {
+      return <ArrowUp className="ml-1 h-3 w-3" />
+    }
+    return <ArrowDown className="ml-1 h-3 w-3" />
+  }
 
   const tabs = [
     {
@@ -704,17 +843,57 @@ export function MatchingPage(): React.JSX.Element {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead>Nr faktury</TableHead>
-                              <TableHead>Nabywca / Kontrahent</TableHead>
-                              <TableHead className="text-right">Kwota</TableHead>
-                              <TableHead>Zgodność</TableHead>
-                              <TableHead>Typ</TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none"
+                                onClick={() => toggleSort('invoice_number', confirmedMatchesSort, setConfirmedMatchesSort)}
+                              >
+                                <span className="flex items-center">
+                                  Nr faktury
+                                  <SortIcon column="invoice_number" currentSort={confirmedMatchesSort} />
+                                </span>
+                              </TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none"
+                                onClick={() => toggleSort('buyer_name', confirmedMatchesSort, setConfirmedMatchesSort)}
+                              >
+                                <span className="flex items-center">
+                                  Nabywca / Kontrahent
+                                  <SortIcon column="buyer_name" currentSort={confirmedMatchesSort} />
+                                </span>
+                              </TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none text-right"
+                                onClick={() => toggleSort('amount', confirmedMatchesSort, setConfirmedMatchesSort)}
+                              >
+                                <span className="flex items-center justify-end">
+                                  Kwota
+                                  <SortIcon column="amount" currentSort={confirmedMatchesSort} />
+                                </span>
+                              </TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none"
+                                onClick={() => toggleSort('confidence', confirmedMatchesSort, setConfirmedMatchesSort)}
+                              >
+                                <span className="flex items-center">
+                                  Zgodność
+                                  <SortIcon column="confidence" currentSort={confirmedMatchesSort} />
+                                </span>
+                              </TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none"
+                                onClick={() => toggleSort('match_type', confirmedMatchesSort, setConfirmedMatchesSort)}
+                              >
+                                <span className="flex items-center">
+                                  Typ
+                                  <SortIcon column="match_type" currentSort={confirmedMatchesSort} />
+                                </span>
+                              </TableHead>
                               {isFakturowniaConfigured && <TableHead className="w-[120px]">Fakturownia</TableHead>}
                               <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {confirmedMatches.map((match) => {
+                            {sortedConfirmedMatches.map((match) => {
                               const invoice = invoicesCache.get(match.invoice_id)
                               const payment = paymentsCache.get(match.payment_id)
                               return (
@@ -866,38 +1045,9 @@ export function MatchingPage(): React.JSX.Element {
                 {/* Unmatched invoices tab */}
                 {selectedTab === 'unmatched' && (
                   <>
-                    {/* Manual matching - Method 1: by ID */}
-                    <div className="mb-4 rounded-lg border bg-muted/50 p-4">
-                      <h4 className="mb-3 text-sm font-medium">Metoda 1: Dopasowanie po ID</h4>
-                      <div className="flex items-end gap-3">
-                        <div className="flex-1">
-                          <label className="mb-1 block text-xs text-muted-foreground">ID faktury</label>
-                          <Input
-                            placeholder="np. abc12345..."
-                            value={manualInvoiceId}
-                            onChange={(e) => setManualInvoiceId(e.target.value)}
-                            className="font-mono text-sm"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <label className="mb-1 block text-xs text-muted-foreground">ID płatności</label>
-                          <Input
-                            placeholder="np. xyz98765..."
-                            value={manualPaymentId}
-                            onChange={(e) => setManualPaymentId(e.target.value)}
-                            className="font-mono text-sm"
-                          />
-                        </div>
-                        <Button onClick={handleManualMatch} disabled={isProcessing}>
-                          <Link2 className="mr-2 h-4 w-4" />
-                          Dopasuj
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Manual matching - Method 2: Search for payment */}
+                    {/* Manual matching - Search for payment */}
                     <div className="mb-6 rounded-lg border bg-muted/50 p-4">
-                      <h4 className="mb-3 text-sm font-medium">Metoda 2: Wyszukaj płatność</h4>
+                      <h4 className="mb-3 text-sm font-medium">Ręczne dopasowanie</h4>
                       <div className="flex flex-col gap-3">
                         <div className="flex items-end gap-3">
                           <div className="w-1/3">
@@ -1003,15 +1153,47 @@ export function MatchingPage(): React.JSX.Element {
                           <TableHeader>
                             <TableRow>
                               <TableHead className="w-[100px]">ID</TableHead>
-                              <TableHead>Nr faktury</TableHead>
-                              <TableHead>Nabywca</TableHead>
-                              <TableHead className="text-right">Kwota</TableHead>
-                              <TableHead>Termin</TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none"
+                                onClick={() => toggleSort('invoice_number', unmatchedInvoicesSort, setUnmatchedInvoicesSort)}
+                              >
+                                <span className="flex items-center">
+                                  Nr faktury
+                                  <SortIcon column="invoice_number" currentSort={unmatchedInvoicesSort} />
+                                </span>
+                              </TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none"
+                                onClick={() => toggleSort('buyer_name', unmatchedInvoicesSort, setUnmatchedInvoicesSort)}
+                              >
+                                <span className="flex items-center">
+                                  Nabywca
+                                  <SortIcon column="buyer_name" currentSort={unmatchedInvoicesSort} />
+                                </span>
+                              </TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none text-right"
+                                onClick={() => toggleSort('amount', unmatchedInvoicesSort, setUnmatchedInvoicesSort)}
+                              >
+                                <span className="flex items-center justify-end">
+                                  Kwota
+                                  <SortIcon column="amount" currentSort={unmatchedInvoicesSort} />
+                                </span>
+                              </TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none"
+                                onClick={() => toggleSort('due_date', unmatchedInvoicesSort, setUnmatchedInvoicesSort)}
+                              >
+                                <span className="flex items-center">
+                                  Termin
+                                  <SortIcon column="due_date" currentSort={unmatchedInvoicesSort} />
+                                </span>
+                              </TableHead>
                               <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {unmatchedInvoices.map((invoice) => (
+                            {sortedUnmatchedInvoices.map((invoice) => (
                               <TableRow key={invoice.id}>
                                 <TableCell>
                                   <ShortId id={invoice.id} prefix="F:" />
@@ -1082,15 +1264,47 @@ export function MatchingPage(): React.JSX.Element {
                           <TableHeader>
                             <TableRow>
                               <TableHead className="w-[100px]">ID</TableHead>
-                              <TableHead>Data</TableHead>
-                              <TableHead>Nadawca</TableHead>
-                              <TableHead>Tytuł</TableHead>
-                              <TableHead className="text-right">Kwota</TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none"
+                                onClick={() => toggleSort('transaction_date', unmatchedPaymentsSort, setUnmatchedPaymentsSort)}
+                              >
+                                <span className="flex items-center">
+                                  Data
+                                  <SortIcon column="transaction_date" currentSort={unmatchedPaymentsSort} />
+                                </span>
+                              </TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none"
+                                onClick={() => toggleSort('sender_name', unmatchedPaymentsSort, setUnmatchedPaymentsSort)}
+                              >
+                                <span className="flex items-center">
+                                  Nadawca
+                                  <SortIcon column="sender_name" currentSort={unmatchedPaymentsSort} />
+                                </span>
+                              </TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none"
+                                onClick={() => toggleSort('title', unmatchedPaymentsSort, setUnmatchedPaymentsSort)}
+                              >
+                                <span className="flex items-center">
+                                  Tytuł
+                                  <SortIcon column="title" currentSort={unmatchedPaymentsSort} />
+                                </span>
+                              </TableHead>
+                              <TableHead
+                                className="cursor-pointer hover:bg-muted/50 select-none text-right"
+                                onClick={() => toggleSort('amount', unmatchedPaymentsSort, setUnmatchedPaymentsSort)}
+                              >
+                                <span className="flex items-center justify-end">
+                                  Kwota
+                                  <SortIcon column="amount" currentSort={unmatchedPaymentsSort} />
+                                </span>
+                              </TableHead>
                               <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {unmatchedPayments.map((payment) => (
+                            {sortedUnmatchedPayments.map((payment) => (
                               <TableRow key={payment.id}>
                                 <TableCell>
                                   <ShortId id={payment.id} prefix="P:" />
