@@ -700,7 +700,7 @@ export function MatchingPage(): React.JSX.Element {
                         </p>
                       </div>
                     ) : (
-                      <div className="rounded-lg border">
+                      <div className="rounded-lg border overflow-x-auto">
                         <Table>
                           <TableHeader>
                             <TableRow>
@@ -998,7 +998,7 @@ export function MatchingPage(): React.JSX.Element {
                         </p>
                       </div>
                     ) : (
-                      <div className="rounded-lg border">
+                      <div className="rounded-lg border overflow-x-auto">
                         <Table>
                           <TableHeader>
                             <TableRow>
@@ -1077,7 +1077,7 @@ export function MatchingPage(): React.JSX.Element {
                         </p>
                       </div>
                     ) : (
-                      <div className="rounded-lg border">
+                      <div className="rounded-lg border overflow-x-auto">
                         <Table>
                           <TableHeader>
                             <TableRow>
