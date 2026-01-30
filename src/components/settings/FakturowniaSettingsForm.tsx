@@ -1,12 +1,21 @@
 import { useState, useEffect } from 'react'
-import { Loader2, CheckCircle2, AlertTriangle, Eye, EyeOff } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertTriangle, Eye, EyeOff, Globe, ExternalLink, ZoomIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { useCompanySettings } from '@/hooks/useCompanySettings'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 export function FakturowniaSettingsForm(): React.JSX.Element {
   const { settings, isLoading, saveFakturowniaSettings, testFakturowniaConnection } = useCompanySettings()
@@ -19,6 +28,7 @@ export function FakturowniaSettingsForm(): React.JSX.Element {
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null)
+  const [isTogglingEnabled, setIsTogglingEnabled] = useState(false)
 
   // Initialize form from settings
   useEffect(() => {
@@ -33,6 +43,29 @@ export function FakturowniaSettingsForm(): React.JSX.Element {
   const tokenPlaceholder = hasExistingToken
     ? '••••••••••••••••'
     : 'Wklej token API'
+
+  // Auto-save toggle immediately
+  const handleToggleEnabled = async (newValue: boolean) => {
+    setEnabled(newValue)
+    setIsTogglingEnabled(true)
+
+    const result = await saveFakturowniaSettings({
+      subdomain: subdomain || settings?.fakturownia_subdomain || '',
+      apiToken: undefined,  // Don't change token
+      departmentId: departmentId || settings?.fakturownia_department_id || undefined,
+      enabled: newValue,
+    })
+
+    setIsTogglingEnabled(false)
+
+    if (result.success) {
+      toast.success(newValue ? 'Integracja włączona' : 'Integracja wyłączona')
+    } else {
+      // Revert on error
+      setEnabled(!newValue)
+      toast.error(result.error || 'Błąd zapisywania')
+    }
+  }
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -81,10 +114,27 @@ export function FakturowniaSettingsForm(): React.JSX.Element {
 
   return (
     <div className="space-y-6">
-      {/* Enable toggle */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <Label htmlFor="fakturownia-enabled">Włącz integrację</Label>
+      {/* Enable toggle - more prominent */}
+      <div className={cn(
+        "flex items-center justify-between rounded-xl border-2 p-4 transition-all",
+        enabled
+          ? "border-green-500 bg-green-50 dark:bg-green-950/20"
+          : "border-dashed border-muted-foreground/30 bg-muted/30"
+      )}>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="fakturownia-enabled" className="text-base font-semibold">
+              Włącz integrację
+            </Label>
+            {enabled && (
+              <span className="rounded-full bg-green-500 px-2 py-0.5 text-xs font-medium text-white">
+                Aktywna
+              </span>
+            )}
+            {isTogglingEnabled && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">
             Pozwól na import faktur z Fakturownia.pl
           </p>
@@ -92,7 +142,12 @@ export function FakturowniaSettingsForm(): React.JSX.Element {
         <Switch
           id="fakturownia-enabled"
           checked={enabled}
-          onCheckedChange={setEnabled}
+          onCheckedChange={handleToggleEnabled}
+          disabled={isTogglingEnabled}
+          className={cn(
+            "scale-125",
+            enabled && "data-[state=checked]:bg-green-500"
+          )}
         />
       </div>
 
@@ -157,24 +212,88 @@ export function FakturowniaSettingsForm(): React.JSX.Element {
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Token znajdziesz w: Fakturownia &rarr; Ustawienia &rarr; Integracje &rarr; API
+              Token znajdziesz w: <strong>Ustawienia → Ustawienia konta → Integracja → Kod autoryzacyjny API</strong>
             </p>
+
+            {/* Screenshot with lightbox */}
+            <Dialog>
+              <DialogTrigger asChild>
+                <button className="group mt-2 block overflow-hidden rounded-lg border border-dashed border-muted-foreground/30 transition-all hover:border-primary/50 hover:shadow-md">
+                  <div className="relative">
+                    <img
+                      src="/screenshots/FakturowniaApiToken.png"
+                      alt="Gdzie znaleźć Token API w Fakturownia"
+                      className="h-32 w-auto object-cover object-top opacity-80 transition-opacity group-hover:opacity-100"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-gray-800">
+                        <ZoomIn className="h-3 w-3" />
+                        Powiększ
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
+                    Kliknij aby powiększyć
+                  </div>
+                </button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl">
+                <DialogHeader>
+                  <DialogTitle>Gdzie znaleźć Token API</DialogTitle>
+                  <DialogDescription>
+                    Ustawienia → Ustawienia konta → Integracja → Kod autoryzacyjny API
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="overflow-auto rounded-lg border">
+                  <img
+                    src="/screenshots/FakturowniaApiToken.png"
+                    alt="Gdzie znaleźć Token API w Fakturownia"
+                    className="w-full"
+                  />
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
 
-          {/* Department ID */}
+          {/* Department ID - with visual URL bar */}
           <div className="space-y-2">
             <Label htmlFor="department-id">ID Działu (opcjonalne)</Label>
             <Input
               id="department-id"
               value={departmentId}
               onChange={(e) => setDepartmentId(e.target.value)}
-              placeholder="np. 12345"
+              placeholder="np. 123456"
               className="max-w-xs"
             />
-            <p className="text-xs text-muted-foreground">
-              Jeśli korzystasz z działów w Fakturownia, podaj ID działu aby filtrować faktury.
-              Znajdziesz go w: Ustawienia &rarr; Działy firmy.
-            </p>
+            <div className="mt-3 rounded-lg border border-dashed bg-muted/30 p-4">
+              <p className="mb-3 text-sm text-muted-foreground">
+                <strong>Jak znaleźć ID działu?</strong> Wejdź w <strong>Ustawienia → Dane firmy</strong>,
+                kliknij w nazwę firmy/działu, a następnie odczytaj numer z paska adresu:
+              </p>
+
+              {/* Visual URL bar */}
+              <div className="flex items-center gap-2 rounded-lg border bg-white dark:bg-gray-900 p-2 shadow-inner">
+                <div className="flex h-7 w-7 items-center justify-center rounded bg-gray-100 dark:bg-gray-800">
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <div className="flex items-center gap-1 font-mono text-sm">
+                    <span className="text-muted-foreground">https://</span>
+                    <span className="text-green-600">twojafirma</span>
+                    <span className="text-muted-foreground">.fakturownia.pl/departments/</span>
+                    <span className="rounded bg-yellow-100 px-1.5 py-0.5 font-bold text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400">
+                      123456
+                    </span>
+                    <span className="text-muted-foreground">/edit</span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="mt-3 text-xs text-muted-foreground">
+                Podświetlony numer <span className="rounded bg-yellow-100 px-1 font-mono font-bold text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400">123456</span> to ID działu.
+                Skopiuj go i wklej powyżej.
+              </p>
+            </div>
           </div>
 
           {/* Test result */}

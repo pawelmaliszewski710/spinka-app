@@ -25,12 +25,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { CreditCard, Search, Plus, RefreshCw, Loader2, Trash2 } from 'lucide-react'
+import { CreditCard, Search, Plus, RefreshCw, Loader2, Trash2, Upload } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Payment } from '@/types'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { NumberTicker } from '@/components/ui/number-ticker'
+import { OnboardingTip } from '@/components/onboarding'
 
 export function PaymentsPage(): React.JSX.Element {
   const { currentCompany } = useCompany()
@@ -201,6 +202,32 @@ export function PaymentsPage(): React.JSX.Element {
             </div>
           </div>
         </BlurFade>
+
+        {/* Onboarding tip for new users */}
+        {payments.length === 0 && !loading && (
+          <OnboardingTip
+            id="payments-intro"
+            title="Zaimportuj wyciąg bankowy"
+            description="Aby dopasować płatności do faktur, musisz najpierw zaimportować wyciąg z banku."
+            icon={<Upload className="h-5 w-5" />}
+            variant="info"
+            steps={[
+              {
+                title: 'Wybierz plik wyciągu',
+                description: 'Obsługiwane formaty: MT940, mBank CSV, ING, Pekao SA i inne.',
+              },
+              {
+                title: 'Sprawdź podgląd',
+                description: 'System pokaże rozpoznane transakcje przychodzące.',
+              },
+              {
+                title: 'Zatwierdź import',
+                description: 'Kliknij zielony przycisk "Importuj płatności" aby dodać je do systemu.',
+                action: 'Ważne: pamiętaj o zatwierdzeniu!',
+              },
+            ]}
+          />
+        )}
 
         {showImport && (
           <BlurFade delay={0.15}>

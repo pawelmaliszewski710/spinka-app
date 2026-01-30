@@ -266,19 +266,30 @@ export function FakturowniaApiImport(): React.JSX.Element {
               )}
             </div>
 
-            {/* Import button */}
-            <div className="flex items-center justify-between rounded-lg bg-primary/5 p-4">
-              <div>
-                <p className="font-medium">
-                  Gotowe do importu: {newCount + updateCount} faktur
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {skipCount} faktur zostanie pominiętych (bez zmian)
-                </p>
+            {/* Import button - prominent CTA */}
+            <div className="rounded-xl border-2 border-green-500 bg-green-50 p-4 dark:bg-green-950/20">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-lg font-semibold text-green-800 dark:text-green-300">
+                    ✓ Gotowe do importu: {newCount + updateCount} faktur
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {skipCount} faktur zostanie pominiętych (bez zmian)
+                  </p>
+                  <p className="mt-1 text-sm text-green-600 dark:text-green-400">
+                    Kliknij przycisk aby zatwierdzić import →
+                  </p>
+                </div>
+                <Button
+                  onClick={executeImport}
+                  disabled={newCount + updateCount === 0}
+                  size="lg"
+                  className="min-w-[180px] bg-green-600 text-base font-semibold shadow-lg transition-all hover:bg-green-700 hover:shadow-xl"
+                >
+                  <Cloud className="mr-2 h-5 w-5" />
+                  Importuj faktury
+                </Button>
               </div>
-              <Button onClick={executeImport} disabled={newCount + updateCount === 0}>
-                Importuj faktury
-              </Button>
             </div>
           </div>
         </CardContent>

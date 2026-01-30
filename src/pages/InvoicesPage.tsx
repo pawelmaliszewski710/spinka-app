@@ -32,12 +32,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { FileText, Search, Plus, RefreshCw, Loader2, Trash2, Copy, CheckCircle2 } from 'lucide-react'
+import { FileText, Search, Plus, RefreshCw, Loader2, Trash2, Copy, CheckCircle2, Upload } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Invoice } from '@/types'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { NumberTicker } from '@/components/ui/number-ticker'
+import { OnboardingTip } from '@/components/onboarding'
 
 type PaymentStatusBadge = {
   label: string
@@ -229,6 +230,32 @@ export function InvoicesPage(): React.JSX.Element {
           </div>
         </div>
         </BlurFade>
+
+        {/* Onboarding tip for new users */}
+        {invoices.length === 0 && !loading && (
+          <OnboardingTip
+            id="invoices-intro"
+            title="Zacznij od importu faktur"
+            description="Aby korzystać z systemu dopasowywania płatności, najpierw zaimportuj swoje faktury."
+            icon={<Upload className="h-5 w-5" />}
+            variant="info"
+            steps={[
+              {
+                title: 'Wybierz źródło faktur',
+                description: 'Możesz połączyć się z Fakturownia.pl przez API lub zaimportować plik CSV/XML.',
+              },
+              {
+                title: 'Podejrzyj dane',
+                description: 'System pokaże Ci podgląd faktur przed importem.',
+              },
+              {
+                title: 'Zatwierdź import',
+                description: 'Kliknij zielony przycisk "Importuj faktury" aby dodać faktury do systemu.',
+                action: 'Ważne: pamiętaj o zatwierdzeniu!',
+              },
+            ]}
+          />
+        )}
 
         {showImport && (
           <BlurFade delay={0.15}>

@@ -300,24 +300,30 @@ export function PaymentImport(): React.JSX.Element {
               )}
             </div>
 
-            {/* Summary */}
-            <div className="rounded-lg bg-green-50 p-4 dark:bg-green-950/20">
-              <p className="text-lg font-medium text-green-700 dark:text-green-400">
-                Suma: {preview.reduce((sum, p) => sum + p.amount, 0).toFixed(2)} PLN
-              </p>
-              <p className="text-sm text-green-600/80 dark:text-green-400/80">
-                {preview.length} transakcji przychodzących
-              </p>
-            </div>
-
-            {/* Action */}
-            <div className="flex items-center justify-between rounded-lg bg-primary/5 p-4">
-              <div>
-                <p className="font-medium">Gotowe do importu: {preview.length} płatności</p>
+            {/* Summary and action - prominent CTA */}
+            <div className="rounded-xl border-2 border-green-500 bg-green-50 p-4 dark:bg-green-950/20">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-lg font-semibold text-green-800 dark:text-green-300">
+                    ✓ Gotowe do importu: {preview.length} płatności
+                  </p>
+                  <p className="text-base font-medium text-green-700 dark:text-green-400">
+                    Suma: {preview.reduce((sum, p) => sum + p.amount, 0).toFixed(2)} PLN
+                  </p>
+                  <p className="mt-1 text-sm text-green-600 dark:text-green-400">
+                    Kliknij przycisk aby zatwierdzić import →
+                  </p>
+                </div>
+                <Button
+                  onClick={handleImport}
+                  disabled={preview.length === 0}
+                  size="lg"
+                  className="min-w-[180px] bg-green-600 text-base font-semibold shadow-lg transition-all hover:bg-green-700 hover:shadow-xl"
+                >
+                  <Upload className="mr-2 h-5 w-5" />
+                  Importuj płatności
+                </Button>
               </div>
-              <Button onClick={handleImport} disabled={preview.length === 0}>
-                Importuj płatności
-              </Button>
             </div>
           </div>
         )}

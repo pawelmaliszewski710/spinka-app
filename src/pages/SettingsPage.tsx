@@ -1,4 +1,4 @@
-import { Settings, Cloud, Bot } from 'lucide-react'
+import { Settings, Cloud, Bot, Plug } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageContainer } from '@/components/layout'
@@ -6,6 +6,7 @@ import { FakturowniaSettingsForm } from '@/components/settings/FakturowniaSettin
 import { AiSettingsForm } from '@/components/settings/AiSettingsForm'
 import { useCompany } from '@/contexts/CompanyContext'
 import { BlurFade } from '@/components/ui/blur-fade'
+import { OnboardingTip } from '@/components/onboarding'
 
 export function SettingsPage(): React.JSX.Element {
   const { currentCompany } = useCompany()
@@ -26,6 +27,35 @@ export function SettingsPage(): React.JSX.Element {
             </div>
           </div>
         </div>
+      </BlurFade>
+
+      <BlurFade delay={0.15}>
+        <OnboardingTip
+          id="settings-intro"
+          title="Skonfiguruj integrację z Fakturownia"
+          description="Połącz swoje konto Fakturownia.pl, aby automatycznie pobierać faktury bez ręcznego eksportu CSV."
+          icon={<Plug className="h-5 w-5" />}
+          variant="info"
+          steps={[
+            {
+              title: 'Włącz integrację',
+              description: 'Kliknij przełącznik "Włącz integrację" na samej górze formularza',
+            },
+            {
+              title: 'Wpisz subdomenę',
+              description: 'To nazwa Twojego konta w Fakturownia (np. "mojafirma" z mojafirma.fakturownia.pl)',
+            },
+            {
+              title: 'Wklej klucz API',
+              description: 'Znajdziesz go w Fakturownia: Ustawienia → Ustawienia konta → Integracja',
+            },
+            {
+              title: 'Opcjonalnie: ID działu',
+              description: 'Jeśli masz wiele działów, podaj ID konkretnego działu do importu',
+            },
+          ]}
+          className="mb-6"
+        />
       </BlurFade>
 
       <Tabs defaultValue="integrations" className="space-y-6">

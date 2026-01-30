@@ -87,6 +87,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { InvoiceAnalytics } from '@/components/analytics/InvoiceAnalytics'
 import { RESOURCE_LIMITS } from '@/lib/constants'
+import { OnboardingTip } from '@/components/onboarding'
 
 // Helper to copy text to clipboard
 function copyToClipboard(text: string) {
@@ -585,6 +586,31 @@ export function MatchingPage(): React.JSX.Element {
             </CardContent>
           </Card>
         </div>
+
+        {/* Onboarding tip for new users */}
+        {unmatchedInvoices.length > 0 && unmatchedPayments.length > 0 && confirmedMatches.length === 0 && autoMatches.length === 0 && suggestions.length === 0 && (
+          <OnboardingTip
+            id="matching-intro"
+            title="Czas na dopasowanie!"
+            description="Masz faktury i płatności w systemie. Teraz możesz je ze sobą dopasować."
+            icon={<Wand2 className="h-5 w-5" />}
+            variant="success"
+            steps={[
+              {
+                title: 'Uruchom auto-dopasowanie',
+                description: 'Kliknij przycisk "Auto-dopasuj" powyżej. System automatycznie znajdzie pasujące pary.',
+              },
+              {
+                title: 'Przejrzyj sugestie',
+                description: 'W zakładce "Sugestie" zobaczysz propozycje dopasowań z różnym poziomem pewności.',
+              },
+              {
+                title: 'Potwierdź lub odrzuć',
+                description: 'Każdą sugestię możesz zaakceptować lub odrzucić. Potwierdzone trafiają do zakładki "Potwierdzone".',
+              },
+            ]}
+          />
+        )}
 
         {/* Tabs */}
         <div className="flex gap-2 border-b">
