@@ -47,7 +47,7 @@ export function LoginPage(): React.JSX.Element {
 
       <BlurFade delay={0.2}>
         <ShineBorder
-          className="w-full max-w-lg"
+          className="w-full max-w-xl"
           color={["#3b82f6", "#8b5cf6", "#06b6d4"]}
           borderRadius={16}
           borderWidth={2}
