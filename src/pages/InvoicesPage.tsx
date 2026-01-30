@@ -327,9 +327,9 @@ export function InvoicesPage(): React.JSX.Element {
                               <TableCell className="font-mono text-sm font-medium text-primary">
                                 {invoice.invoice_number}
                               </TableCell>
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium">{invoice.buyer_name}</div>
+                              <TableCell className="max-w-[220px]">
+                                <div title={invoice.buyer_name}>
+                                  <div className="truncate font-medium">{invoice.buyer_name}</div>
                                   {invoice.buyer_nip && (
                                     <div className="text-xs text-muted-foreground">
                                       NIP: {invoice.buyer_nip}

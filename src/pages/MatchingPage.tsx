@@ -915,12 +915,12 @@ export function MatchingPage(): React.JSX.Element {
                                   <TableCell className="font-mono text-sm">
                                     {invoice?.invoice_number || match.invoice_id.slice(0, 8) + '...'}
                                   </TableCell>
-                                  <TableCell>
-                                    <div>
-                                      <div className="text-sm font-medium">
+                                  <TableCell className="max-w-[200px]">
+                                    <div title={invoice?.buyer_name || ''}>
+                                      <div className="truncate text-sm font-medium">
                                         {invoice?.buyer_name || 'Nieznany'}
                                       </div>
-                                      <div className="text-xs text-muted-foreground">
+                                      <div className="truncate text-xs text-muted-foreground">
                                         {payment?.sender_name || 'Nieznany'} • {payment?.title?.slice(0, 30) || ''}
                                       </div>
                                     </div>
@@ -1211,7 +1211,7 @@ export function MatchingPage(): React.JSX.Element {
                                 <TableCell className="font-mono text-sm font-medium">
                                   {invoice.invoice_number}
                                 </TableCell>
-                                <TableCell>{invoice.buyer_name}</TableCell>
+                                <TableCell className="max-w-[180px] truncate" title={invoice.buyer_name}>{invoice.buyer_name}</TableCell>
                                 <TableCell className="text-right font-medium">
                                   {formatCurrency(invoice.gross_amount, invoice.currency)}
                                 </TableCell>
@@ -1320,7 +1320,7 @@ export function MatchingPage(): React.JSX.Element {
                                   <ShortId id={payment.id} prefix="P:" />
                                 </TableCell>
                                 <TableCell>{formatDate(payment.transaction_date)}</TableCell>
-                                <TableCell className="max-w-[150px] truncate">
+                                <TableCell className="max-w-[180px] truncate" title={payment.sender_name || ''}>
                                   {payment.sender_name}
                                 </TableCell>
                                 <TableCell className="max-w-[200px] truncate" title={payment.title}>

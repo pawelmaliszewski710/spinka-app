@@ -306,11 +306,11 @@ export function PaymentsPage(): React.JSX.Element {
                           <TableCell className="whitespace-nowrap">
                             {formatDate(payment.transaction_date)}
                           </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{payment.sender_name}</div>
+                          <TableCell className="max-w-[220px]">
+                            <div title={payment.sender_name || ''}>
+                              <div className="truncate font-medium">{payment.sender_name}</div>
                               {payment.sender_account && (
-                                <div className="max-w-[200px] truncate text-xs text-muted-foreground">
+                                <div className="truncate text-xs text-muted-foreground">
                                   {payment.sender_account}
                                 </div>
                               )}

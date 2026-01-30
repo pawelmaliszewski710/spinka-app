@@ -4,7 +4,15 @@ import { cn } from "@/lib/utils"
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    <div
+      data-slot="table-container"
+      className="relative w-full overflow-x-auto scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-transparent hover:scrollbar-thumb-muted-foreground/50"
+      style={{
+        // Ensure scrollbar is always visible when content overflows
+        scrollbarWidth: 'thin',
+        scrollbarGutter: 'stable',
+      }}
+    >
       <table
         data-slot="table"
         className={cn("w-full caption-bottom text-sm", className)}
