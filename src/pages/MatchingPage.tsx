@@ -332,8 +332,6 @@ export function MatchingPage(): React.JSX.Element {
     return [...confirmedMatches].sort((a, b) => {
       const invoiceA = invoicesCache.get(a.invoice_id)
       const invoiceB = invoicesCache.get(b.invoice_id)
-      const _paymentA = paymentsCache.get(a.payment_id)
-      const _paymentB = paymentsCache.get(b.payment_id)
 
       let comparison = 0
       switch (confirmedMatchesSort.column) {
@@ -356,7 +354,7 @@ export function MatchingPage(): React.JSX.Element {
 
       return confirmedMatchesSort.direction === 'asc' ? comparison : -comparison
     })
-  }, [confirmedMatches, confirmedMatchesSort, invoicesCache, paymentsCache])
+  }, [confirmedMatches, confirmedMatchesSort, invoicesCache])
 
   // Sorted unmatched invoices
   const sortedUnmatchedInvoices = useMemo(() => {
