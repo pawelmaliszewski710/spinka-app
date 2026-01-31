@@ -47,16 +47,18 @@ export function LoginPage(): React.JSX.Element {
 
       <BlurFade delay={0.2}>
         <ShineBorder
-          className="w-full max-w-xl"
+          className="w-full max-w-2xl"
           color={["#3b82f6", "#8b5cf6", "#06b6d4"]}
           borderRadius={16}
           borderWidth={2}
         >
-          <Card className="w-full border-0 bg-background/80 backdrop-blur-sm">
+          <Card className="w-full border-0 bg-background/80 backdrop-blur-sm px-4">
             <CardHeader className="text-center">
               <BlurFade delay={0.3}>
                 <div className="flex justify-center mb-2">
-                  <img src="/spinka-logo.png" alt="Spinka" className="h-16 w-auto" />
+                  <a href="https://www.spinka.studio" className="hover:opacity-80 transition-opacity">
+                    <img src="/spinka-logo.png" alt="Spinka - Wróć do strony głównej" className="h-16 w-auto" />
+                  </a>
                 </div>
               </BlurFade>
               <BlurFade delay={0.4}>
