@@ -250,6 +250,144 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_limits: {
+        Row: {
+          id: string
+          plan_id: string
+          display_name: string
+          monthly_invoice_limit: number | null
+          monthly_ai_budget_cents: number | null
+          max_companies: number | null
+          features: Json | null
+          stripe_price_id_monthly: string | null
+          stripe_price_id_yearly: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          plan_id: string
+          display_name: string
+          monthly_invoice_limit?: number | null
+          monthly_ai_budget_cents?: number | null
+          max_companies?: number | null
+          features?: Json | null
+          stripe_price_id_monthly?: string | null
+          stripe_price_id_yearly?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          plan_id?: string
+          display_name?: string
+          monthly_invoice_limit?: number | null
+          monthly_ai_budget_cents?: number | null
+          max_companies?: number | null
+          features?: Json | null
+          stripe_price_id_monthly?: string | null
+          stripe_price_id_yearly?: string | null
+          created_at?: string | null
+        }
+        Relationships: []
+      }
+      user_profiles: {
+        Row: {
+          id: string
+          plan_id: string | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_status: string | null
+          current_period_start: string | null
+          current_period_end: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id: string
+          plan_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string | null
+          current_period_start?: string | null
+          current_period_end?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          plan_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string | null
+          current_period_start?: string | null
+          current_period_end?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      usage_tracking: {
+        Row: {
+          id: string
+          user_id: string | null
+          period_start: string
+          period_end: string
+          invoices_imported: number | null
+          ai_tokens_used: number | null
+          ai_cost_cents: number | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          period_start: string
+          period_end: string
+          invoices_imported?: number | null
+          ai_tokens_used?: number | null
+          ai_cost_cents?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          period_start?: string
+          period_end?: string
+          invoices_imported?: number | null
+          ai_tokens_used?: number | null
+          ai_cost_cents?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      subscription_events: {
+        Row: {
+          id: string
+          user_id: string | null
+          event_type: string
+          stripe_event_id: string | null
+          payload: Json | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          event_type: string
+          stripe_event_id?: string | null
+          payload?: Json | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          event_type?: string
+          stripe_event_id?: string | null
+          payload?: Json | null
+          created_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       v_dashboard_summary: {
@@ -331,6 +469,54 @@ export type Database = {
           p_secret_id: string
         }
         Returns: string
+      }
+      can_import_invoices: {
+        Args: {
+          p_user_id: string
+          p_count?: number
+        }
+        Returns: boolean
+      }
+      can_use_ai: {
+        Args: {
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      get_user_usage_with_limits: {
+        Args: {
+          p_user_id: string
+        }
+        Returns: {
+          plan_id: string
+          display_name: string
+          monthly_invoice_limit: number | null
+          monthly_ai_budget_cents: number | null
+          max_companies: number | null
+          invoices_imported: number
+          ai_cost_cents: number
+          period_start: string
+          period_end: string
+        }[]
+      }
+      increment_invoice_usage: {
+        Args: {
+          p_user_id: string
+          p_period_start: string
+          p_period_end: string
+          p_count: number
+        }
+        Returns: undefined
+      }
+      increment_ai_usage: {
+        Args: {
+          p_user_id: string
+          p_period_start: string
+          p_period_end: string
+          p_tokens: number
+          p_cost_cents: number
+        }
+        Returns: undefined
       }
     }
     Enums: {
@@ -436,3 +622,8 @@ export type CompanyUpdate = Database['public']['Tables']['companies']['Update']
 export type CompanyIntegration = Database['public']['Tables']['company_integrations']['Row']
 export type CompanyIntegrationInsert = Database['public']['Tables']['company_integrations']['Insert']
 export type CompanyIntegrationUpdate = Database['public']['Tables']['company_integrations']['Update']
+
+export type PlanLimits = Database['public']['Tables']['plan_limits']['Row']
+export type UserProfile = Database['public']['Tables']['user_profiles']['Row']
+export type UsageTracking = Database['public']['Tables']['usage_tracking']['Row']
+export type SubscriptionEvent = Database['public']['Tables']['subscription_events']['Row']
