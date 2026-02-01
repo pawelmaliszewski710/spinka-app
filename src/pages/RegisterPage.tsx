@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,6 @@ import { ShineBorder } from '@/components/ui/shine-border'
 import { cn } from '@/lib/utils'
 
 export function RegisterPage(): React.JSX.Element {
-  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { signUp, signInWithGoogle, loading, error, clearError } = useAuth()
   const [email, setEmail] = useState('')
