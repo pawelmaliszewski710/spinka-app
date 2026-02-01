@@ -889,15 +889,6 @@ export function MatchingPage(): React.JSX.Element {
                                   <SortIcon column="confidence" currentSort={confirmedMatchesSort} />
                                 </span>
                               </TableHead>
-                              <TableHead
-                                className="cursor-pointer hover:bg-muted/50 select-none"
-                                onClick={() => toggleSort('match_type', confirmedMatchesSort, setConfirmedMatchesSort)}
-                              >
-                                <span className="flex items-center">
-                                  Typ
-                                  <SortIcon column="match_type" currentSort={confirmedMatchesSort} />
-                                </span>
-                              </TableHead>
                               {isFakturowniaConfigured && <TableHead className="w-[120px]">Fakturownia</TableHead>}
                               <TableHead className="w-[50px]"></TableHead>
                             </TableRow>
@@ -936,17 +927,6 @@ export function MatchingPage(): React.JSX.Element {
                                   <TableCell>
                                     <span className={getMatchQuality(match.confidence_score).color}>
                                       {Math.round(match.confidence_score * 100)}%
-                                    </span>
-                                  </TableCell>
-                                  <TableCell>
-                                    <span
-                                      className={`rounded-full px-2 py-1 text-xs ${
-                                        match.match_type === 'auto'
-                                          ? 'bg-blue-100 text-blue-800'
-                                          : 'bg-purple-100 text-purple-800'
-                                      }`}
-                                    >
-                                      {match.match_type === 'auto' ? 'Auto' : 'Ręczne'}
                                     </span>
                                   </TableCell>
                                   {isFakturowniaConfigured && (
