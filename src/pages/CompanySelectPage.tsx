@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Plus, Loader2 } from 'lucide-react'
+import { Building2, Plus, Loader2, LogOut, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -10,9 +10,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { CompanyCard, CompanyForm } from '@/components/company'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useCompanies } from '@/hooks/useCompanies'
+import { useAuth } from '@/hooks/useAuth'
 import { DotPattern } from '@/components/ui/dot-pattern'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { ShineBorder } from '@/components/ui/shine-border'
@@ -22,7 +31,13 @@ export function CompanySelectPage(): React.JSX.Element {
   const navigate = useNavigate()
   const { companies, currentCompany, selectCompany, isLoading } = useCompany()
   const { createCompany, isLoading: isCreating } = useCompanies()
+  const { user, signOut } = useAuth()
   const [showNewDialog, setShowNewDialog] = useState(false)
+
+  const handleSignOut = async () => {
+    await signOut()
+    navigate('/login')
+  }
 
   const handleSelect = (companyId: string) => {
     selectCompany(companyId)
@@ -48,6 +63,30 @@ export function CompanySelectPage(): React.JSX.Element {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background p-4 overflow-hidden">
+      {/* User menu in top-right corner */}
+      <div className="absolute top-4 right-4 z-10">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="gap-2">
+              <User className="h-4 w-4" />
+              <span className="max-w-[200px] truncate">{user?.email}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>Moje konto</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+              {user?.email}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
+              <LogOut className="mr-2 h-4 w-4" />
+              Wyloguj się
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
       <DotPattern
         className={cn(
           "[mask-image:radial-gradient(400px_circle_at_center,white,transparent)]",
