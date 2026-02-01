@@ -170,6 +170,27 @@ export function RegisterPage(): React.JSX.Element {
               </BlurFade>
             </CardHeader>
             <CardContent>
+              {/* Plan info banner when coming from landing page with paid plan */}
+              {selectedPlan && selectedPlan !== 'free' && priceId && (
+                <BlurFade delay={0.45}>
+                  <Alert className="mb-4 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
+                    <CreditCard className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <AlertDescription className="text-blue-800 dark:text-blue-200">
+                      <strong>
+                        Wybrany plan:{' '}
+                        {selectedPlan === 'standard' && 'Standard (99 PLN/mies.)'}
+                        {selectedPlan === 'multi' && 'Multi-Firma (199 PLN/mies.)'}
+                        {selectedPlan === 'enterprise' && 'Biuro Rachunkowe (499 PLN/mies.)'}
+                      </strong>
+                      <br />
+                      <span className="text-sm">
+                        Po rejestracji zostaniesz przekierowany do bezpiecznej płatności Stripe.
+                      </span>
+                    </AlertDescription>
+                  </Alert>
+                </BlurFade>
+              )}
+
               <form onSubmit={handleSubmit} className="space-y-4">
                 {displayError && (
                   <BlurFade delay={0}>
