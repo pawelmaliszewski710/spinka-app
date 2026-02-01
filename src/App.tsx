@@ -17,6 +17,25 @@ import {
   BillingPage,
 } from '@/pages'
 import { useAuth } from '@/hooks/useAuth'
+import { usePendingCheckout } from '@/hooks/usePendingCheckout'
+
+// Component to handle pending checkout redirect after login
+function PendingCheckoutHandler({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const { processing } = usePendingCheckout()
+
+  if (processing) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="h-8 w-8 mx-auto animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="mt-4 text-muted-foreground">Przekierowujemy do płatności...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return <>{children}</>
+}
 
 function PublicRoute({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { user, loading } = useAuth()
@@ -40,8 +59,9 @@ function PublicRoute({ children }: { children: React.ReactNode }): React.JSX.Ele
 function App(): React.JSX.Element {
   return (
     <BrowserRouter>
-      <CompanyProvider>
-        <Routes>
+      <PendingCheckoutHandler>
+        <CompanyProvider>
+          <Routes>
           {/* Public routes */}
           <Route
             path="/login"
@@ -148,9 +168,10 @@ function App(): React.JSX.Element {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
 
-        {/* Global toast notifications */}
-        <Toaster position="top-right" />
-      </CompanyProvider>
+          {/* Global toast notifications */}
+          <Toaster position="top-right" />
+        </CompanyProvider>
+      </PendingCheckoutHandler>
     </BrowserRouter>
   )
 }

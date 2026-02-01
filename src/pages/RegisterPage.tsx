@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -49,43 +48,15 @@ export function RegisterPage(): React.JSX.Element {
       toast.success('Konto utworzone pomyślnie!')
       setSuccess(true)
 
-      // If user came from landing with a paid plan, redirect to Stripe checkout
+      // If user came from landing with a paid plan, save to localStorage for after email confirmation
       if (priceId && selectedPlan !== 'free') {
+        localStorage.setItem('pendingCheckout', JSON.stringify({
+          priceId,
+          planId: selectedPlan,
+          createdAt: Date.now(),
+        }))
         setRedirectingToCheckout(true)
-
-        try {
-          // Wait a moment for the session to be established
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-
-          // Create checkout session
-          const { data, error: checkoutError } = await supabase.functions.invoke(
-            'create-checkout-session',
-            {
-              body: {
-                priceId,
-                successUrl: `${window.location.origin}/settings/billing?checkout=success`,
-                cancelUrl: `${window.location.origin}/settings/billing?checkout=canceled`,
-              },
-            }
-          )
-
-          if (checkoutError || !data?.url) {
-            console.error('Checkout error:', checkoutError)
-            toast.error('Nie udało się utworzyć sesji płatności. Spróbuj później w ustawieniach.')
-            setTimeout(() => navigate('/'), 2000)
-            return
-          }
-
-          // Redirect to Stripe Checkout
-          window.location.href = data.url
-        } catch (err) {
-          console.error('Checkout error:', err)
-          toast.error('Błąd podczas tworzenia płatności')
-          setTimeout(() => navigate('/'), 2000)
-        }
-      } else {
-        // Free plan or no plan specified - go to dashboard
-        setTimeout(() => navigate('/'), 2000)
+        // User needs to confirm email first - they'll be redirected to checkout after login
       }
     } else {
       toast.error(error.message || 'Błąd podczas rejestracji')
@@ -116,17 +87,25 @@ export function RegisterPage(): React.JSX.Element {
                       <CreditCard className="h-12 w-12 text-blue-500" />
                       <h2 className="text-xl font-semibold">Konto utworzone!</h2>
                       <p className="text-muted-foreground">
-                        Przekierowujemy do płatności...
+                        Sprawdź swoją skrzynkę email i potwierdź konto.
                       </p>
-                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">
+                        Po zalogowaniu zostaniesz automatycznie przekierowany do płatności Stripe.
+                      </p>
+                      <Link to="/login" className="mt-2">
+                        <Button>Przejdź do logowania</Button>
+                      </Link>
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="h-12 w-12 text-green-500" />
                       <h2 className="text-xl font-semibold">Konto utworzone!</h2>
                       <p className="text-muted-foreground">
-                        Zostaniesz przekierowany do aplikacji...
+                        Sprawdź swoją skrzynkę email i potwierdź konto.
                       </p>
+                      <Link to="/login" className="mt-2">
+                        <Button>Przejdź do logowania</Button>
+                      </Link>
                     </>
                   )}
                 </div>
