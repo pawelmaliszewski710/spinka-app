@@ -91,25 +91,10 @@ export function useSubscription(): UseSubscriptionReturn {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }))
 
-      // Get user profile with plan limits
+      // Get user profile
       const { data: profileData, error: profileError } = await supabase
         .from('user_profiles')
-        .select(`
-          plan_id,
-          stripe_customer_id,
-          stripe_subscription_id,
-          subscription_status,
-          current_period_start,
-          current_period_end,
-          plan_limits (
-            plan_id,
-            display_name,
-            monthly_invoice_limit,
-            monthly_ai_budget_cents,
-            max_companies,
-            features
-          )
-        `)
+        .select('*')
         .eq('id', user.id)
         .single()
 
@@ -137,32 +122,39 @@ export function useSubscription(): UseSubscriptionReturn {
         throw profileError
       }
 
-      // Parse plan limits
-      const planLimits = profileData?.plan_limits as {
-        plan_id: string
-        display_name: string
-        monthly_invoice_limit: number | null
-        monthly_ai_budget_cents: number | null
-        max_companies: number | null
-        features: Record<string, boolean>
-      } | null
+      // Get plan limits separately
+      const userPlanId = profileData?.plan_id || 'free'
+      const { data: planLimitsData } = await supabase
+        .from('plan_limits')
+        .select('*')
+        .eq('plan_id', userPlanId)
+        .single()
 
-      const plan: PlanLimits = planLimits
+      const plan: PlanLimits = planLimitsData
         ? {
-            planId: planLimits.plan_id,
-            displayName: planLimits.display_name,
-            monthlyInvoiceLimit: planLimits.monthly_invoice_limit,
-            monthlyAiBudgetCents: planLimits.monthly_ai_budget_cents,
-            maxCompanies: planLimits.max_companies,
-            features: planLimits.features || {},
+            planId: planLimitsData.plan_id,
+            displayName: planLimitsData.display_name,
+            monthlyInvoiceLimit: planLimitsData.monthly_invoice_limit,
+            monthlyAiBudgetCents: planLimitsData.monthly_ai_budget_cents,
+            maxCompanies: planLimitsData.max_companies,
+            features: (planLimitsData.features as Record<string, boolean>) || {},
           }
         : DEFAULT_FREE_PLAN
 
+      // Map subscription status to valid type
+      const statusMap: Record<string, 'active' | 'canceled' | 'past_due' | 'trialing'> = {
+        active: 'active',
+        canceled: 'canceled',
+        past_due: 'past_due',
+        trialing: 'trialing',
+      }
+      const subscriptionStatus = statusMap[profileData?.subscription_status || 'active'] || 'active'
+
       const profile: UserProfile = {
-        planId: profileData?.plan_id || 'free',
+        planId: userPlanId,
         stripeCustomerId: profileData?.stripe_customer_id || null,
         stripeSubscriptionId: profileData?.stripe_subscription_id || null,
-        subscriptionStatus: profileData?.subscription_status || 'active',
+        subscriptionStatus,
         currentPeriodStart: profileData?.current_period_start || null,
         currentPeriodEnd: profileData?.current_period_end || null,
       }
