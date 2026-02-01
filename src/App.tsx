@@ -14,6 +14,7 @@ import {
   CompanyManagePage,
   AiChatPage,
   SettingsPage,
+  BillingPage,
 } from '@/pages'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -131,6 +132,14 @@ function App(): React.JSX.Element {
             element={
               <ProtectedRoute>
                 <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/billing"
+            element={
+              <ProtectedRoute>
+                <BillingPage />
               </ProtectedRoute>
             }
           />

@@ -11,6 +11,7 @@ import type {
 import { supabase } from '@/lib/supabase'
 import { useCompany } from '@/contexts/CompanyContext'
 import type { PaymentStatus, InvoiceInsert } from '@/types'
+import { trackInvoiceImport } from '@/hooks/useUsageTracker'
 
 // ============================================
 // Types
@@ -450,6 +451,11 @@ export function useFakturowniaImport(): UseFakturowniaImportResult {
         total: preview.length,
         message: 'Import zakończony',
       })
+
+      // Track invoice usage for billing (only new imports count)
+      if (imported > 0) {
+        trackInvoiceImport(user.id, imported)
+      }
 
       if (errors.length === 0) {
         toast.success(

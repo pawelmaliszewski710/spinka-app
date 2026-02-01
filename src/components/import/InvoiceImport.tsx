@@ -33,6 +33,7 @@ import { useCompany } from '@/contexts/CompanyContext'
 import { useCompanySettings } from '@/hooks/useCompanySettings'
 import { cn } from '@/lib/utils'
 import { BlurFade } from '@/components/ui/blur-fade'
+import { trackInvoiceImport } from '@/hooks/useUsageTracker'
 
 type ImportSource = 'fakturownia' | 'file' | 'optima' | null
 type ImportStep = 'select' | 'preview' | 'importing' | 'complete' | 'error'
@@ -478,6 +479,11 @@ function FileInvoiceImport(): React.JSX.Element {
         skipped: skippedCount,
         errors: [],
       })
+
+      // Track invoice usage for billing
+      if (newInvoices.length > 0) {
+        trackInvoiceImport(user.id, newInvoices.length)
+      }
 
       toast.success(`Zaimportowano ${newInvoices.length} faktur`)
       setStep('complete')

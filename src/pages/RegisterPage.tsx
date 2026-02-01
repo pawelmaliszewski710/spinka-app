@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Loader2, CreditCard } from 'lucide-react'
 import { DotPattern } from '@/components/ui/dot-pattern'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { ShineBorder } from '@/components/ui/shine-border'
@@ -15,12 +16,18 @@ import { cn } from '@/lib/utils'
 
 export function RegisterPage(): React.JSX.Element {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { signUp, signInWithGoogle, loading, error, clearError } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [redirectingToCheckout, setRedirectingToCheckout] = useState(false)
+
+  // Get plan and price from URL params (coming from landing page)
+  const selectedPlan = searchParams.get('plan')
+  const priceId = searchParams.get('price')
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
@@ -41,8 +48,45 @@ export function RegisterPage(): React.JSX.Element {
     if (!error) {
       toast.success('Konto utworzone pomyślnie!')
       setSuccess(true)
-      // Auto-redirect after success
-      setTimeout(() => navigate('/'), 2000)
+
+      // If user came from landing with a paid plan, redirect to Stripe checkout
+      if (priceId && selectedPlan !== 'free') {
+        setRedirectingToCheckout(true)
+
+        try {
+          // Wait a moment for the session to be established
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+
+          // Create checkout session
+          const { data, error: checkoutError } = await supabase.functions.invoke(
+            'create-checkout-session',
+            {
+              body: {
+                priceId,
+                successUrl: `${window.location.origin}/settings/billing?checkout=success`,
+                cancelUrl: `${window.location.origin}/settings/billing?checkout=canceled`,
+              },
+            }
+          )
+
+          if (checkoutError || !data?.url) {
+            console.error('Checkout error:', checkoutError)
+            toast.error('Nie udało się utworzyć sesji płatności. Spróbuj później w ustawieniach.')
+            setTimeout(() => navigate('/'), 2000)
+            return
+          }
+
+          // Redirect to Stripe Checkout
+          window.location.href = data.url
+        } catch (err) {
+          console.error('Checkout error:', err)
+          toast.error('Błąd podczas tworzenia płatności')
+          setTimeout(() => navigate('/'), 2000)
+        }
+      } else {
+        // Free plan or no plan specified - go to dashboard
+        setTimeout(() => navigate('/'), 2000)
+      }
     } else {
       toast.error(error.message || 'Błąd podczas rejestracji')
     }
@@ -60,18 +104,31 @@ export function RegisterPage(): React.JSX.Element {
         <BlurFade delay={0.1}>
           <ShineBorder
             className="w-full max-w-2xl"
-            color={["#22c55e", "#10b981", "#059669"]}
+            color={redirectingToCheckout ? ["#3b82f6", "#8b5cf6", "#06b6d4"] : ["#22c55e", "#10b981", "#059669"]}
             borderRadius={16}
             borderWidth={2}
           >
             <Card className="w-full border-0 bg-background/80 backdrop-blur-sm px-4">
               <CardContent className="pt-6">
                 <div className="flex flex-col items-center space-y-4 text-center">
-                  <CheckCircle2 className="h-12 w-12 text-green-500" />
-                  <h2 className="text-xl font-semibold">Konto utworzone!</h2>
-                  <p className="text-muted-foreground">
-                    Zostaniesz przekierowany do aplikacji...
-                  </p>
+                  {redirectingToCheckout ? (
+                    <>
+                      <CreditCard className="h-12 w-12 text-blue-500" />
+                      <h2 className="text-xl font-semibold">Konto utworzone!</h2>
+                      <p className="text-muted-foreground">
+                        Przekierowujemy do płatności...
+                      </p>
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-12 w-12 text-green-500" />
+                      <h2 className="text-xl font-semibold">Konto utworzone!</h2>
+                      <p className="text-muted-foreground">
+                        Zostaniesz przekierowany do aplikacji...
+                      </p>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
