@@ -8,8 +8,13 @@ interface AuthState {
   error: AuthError | null
 }
 
+interface SignUpResult {
+  user: User | null
+  error: AuthError | null
+}
+
 interface UseAuthReturn extends AuthState {
-  signUp: (email: string, password: string) => Promise<{ error: AuthError | null }>
+  signUp: (email: string, password: string) => Promise<SignUpResult>
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
   signInWithGoogle: () => Promise<{ error: AuthError | null }>
   signOut: () => Promise<void>
@@ -48,10 +53,10 @@ export function useAuth(): UseAuthReturn {
   }, [])
 
   const signUp = useCallback(
-    async (email: string, password: string): Promise<{ error: AuthError | null }> => {
+    async (email: string, password: string): Promise<SignUpResult> => {
       setState((prev) => ({ ...prev, loading: true, error: null }))
 
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
       })
@@ -62,7 +67,7 @@ export function useAuth(): UseAuthReturn {
         error: error,
       }))
 
-      return { error }
+      return { user: data?.user ?? null, error }
     },
     []
   )

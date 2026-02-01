@@ -44,8 +44,8 @@ export function RegisterPage(): React.JSX.Element {
       return
     }
 
-    const { error: signUpError } = await signUp(email, password)
-    if (!signUpError) {
+    const { user: signedUpUser, error: signUpError } = await signUp(email, password)
+    if (!signUpError && signedUpUser) {
       toast.success('Konto utworzone pomyślnie!')
       setSuccess(true)
 
@@ -54,15 +54,17 @@ export function RegisterPage(): React.JSX.Element {
         setRedirectingToCheckout(true)
 
         try {
-          // Wait a moment for the session to be established
-          await new Promise((resolve) => setTimeout(resolve, 1500))
+          // Wait a moment for the user profile to be created by the trigger
+          await new Promise((resolve) => setTimeout(resolve, 1000))
 
-          // Create checkout session
+          // Create checkout session - pass userId and email since user is not yet authenticated
           const { data, error: checkoutError } = await supabase.functions.invoke(
             'create-checkout-session',
             {
               body: {
                 priceId,
+                userId: signedUpUser.id,
+                userEmail: email,
                 successUrl: `${window.location.origin}/settings/billing?checkout=success`,
                 cancelUrl: `${window.location.origin}/settings/billing?checkout=canceled`,
               },
@@ -100,7 +102,7 @@ export function RegisterPage(): React.JSX.Element {
         setTimeout(() => navigate('/'), 2000)
       }
     } else {
-      toast.error(signUpError.message || 'Błąd podczas rejestracji')
+      toast.error(signUpError?.message || 'Błąd podczas rejestracji')
     }
   }
 
