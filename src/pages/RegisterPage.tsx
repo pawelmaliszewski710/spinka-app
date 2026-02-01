@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,6 +15,7 @@ import { ShineBorder } from '@/components/ui/shine-border'
 import { cn } from '@/lib/utils'
 
 export function RegisterPage(): React.JSX.Element {
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { signUp, signInWithGoogle, loading, error, clearError } = useAuth()
   const [email, setEmail] = useState('')
@@ -42,23 +44,63 @@ export function RegisterPage(): React.JSX.Element {
       return
     }
 
-    const { error } = await signUp(email, password)
-    if (!error) {
+    const { error: signUpError } = await signUp(email, password)
+    if (!signUpError) {
       toast.success('Konto utworzone pomyślnie!')
       setSuccess(true)
 
-      // If user came from landing with a paid plan, save to localStorage for after email confirmation
+      // If user came from landing with a paid plan, redirect to Stripe checkout immediately
       if (priceId && selectedPlan !== 'free') {
-        localStorage.setItem('pendingCheckout', JSON.stringify({
-          priceId,
-          planId: selectedPlan,
-          createdAt: Date.now(),
-        }))
         setRedirectingToCheckout(true)
-        // User needs to confirm email first - they'll be redirected to checkout after login
+
+        try {
+          // Wait a moment for the session to be established
+          await new Promise((resolve) => setTimeout(resolve, 1500))
+
+          // Create checkout session
+          const { data, error: checkoutError } = await supabase.functions.invoke(
+            'create-checkout-session',
+            {
+              body: {
+                priceId,
+                successUrl: `${window.location.origin}/settings/billing?checkout=success`,
+                cancelUrl: `${window.location.origin}/settings/billing?checkout=canceled`,
+              },
+            }
+          )
+
+          if (checkoutError || !data?.url) {
+            console.error('Checkout error:', checkoutError)
+            // Save to localStorage as fallback - user can complete checkout after login
+            localStorage.setItem('pendingCheckout', JSON.stringify({
+              priceId,
+              planId: selectedPlan,
+              createdAt: Date.now(),
+            }))
+            toast.error('Nie udało się przekierować do płatności. Spróbuj po zalogowaniu.')
+            setRedirectingToCheckout(false)
+            return
+          }
+
+          // Redirect to Stripe Checkout
+          window.location.href = data.url
+        } catch (err) {
+          console.error('Checkout error:', err)
+          // Save to localStorage as fallback
+          localStorage.setItem('pendingCheckout', JSON.stringify({
+            priceId,
+            planId: selectedPlan,
+            createdAt: Date.now(),
+          }))
+          toast.error('Błąd podczas tworzenia płatności. Spróbuj po zalogowaniu.')
+          setRedirectingToCheckout(false)
+        }
+      } else {
+        // Free plan or no plan specified - go to dashboard
+        setTimeout(() => navigate('/'), 2000)
       }
     } else {
-      toast.error(error.message || 'Błąd podczas rejestracji')
+      toast.error(signUpError.message || 'Błąd podczas rejestracji')
     }
   }
 
@@ -86,25 +128,17 @@ export function RegisterPage(): React.JSX.Element {
                       <CreditCard className="h-12 w-12 text-blue-500" />
                       <h2 className="text-xl font-semibold">Konto utworzone!</h2>
                       <p className="text-muted-foreground">
-                        Sprawdź swoją skrzynkę email i potwierdź konto.
+                        Przekierowujemy do płatności...
                       </p>
-                      <p className="text-sm text-muted-foreground">
-                        Po zalogowaniu zostaniesz automatycznie przekierowany do płatności Stripe.
-                      </p>
-                      <Link to="/login" className="mt-2">
-                        <Button>Przejdź do logowania</Button>
-                      </Link>
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="h-12 w-12 text-green-500" />
                       <h2 className="text-xl font-semibold">Konto utworzone!</h2>
                       <p className="text-muted-foreground">
-                        Sprawdź swoją skrzynkę email i potwierdź konto.
+                        Zostaniesz przekierowany do aplikacji...
                       </p>
-                      <Link to="/login" className="mt-2">
-                        <Button>Przejdź do logowania</Button>
-                      </Link>
                     </>
                   )}
                 </div>
