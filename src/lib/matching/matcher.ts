@@ -535,7 +535,10 @@ export function calculateMatchConfidence(
     }
   }
 
-  // RULE: If invoice number + amount matches but neither name nor NIP matches = only suggestion
+  // RULE: If invoice number + amount matches = AUTO-MATCH even without name/NIP
+  // Rationale: If someone explicitly writes invoice number in payment title, they're paying that invoice.
+  // The probability of someone typing a specific invoice number and NOT paying for it is very low.
+  // Name/NIP mismatch can happen with organizational units (e.g., DOM POMOCY paying for MIASTO WARSZAWA).
   if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && !nameOrNipMatches) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
@@ -547,19 +550,20 @@ export function calculateMatchConfidence(
     }
 
     if (debug) {
-      console.log(`   ⚠️ SUGESTIA: Nr faktury + kwota pasują, ale ani nazwa ani NIP nie pasują`)
-      console.log(`      nameScore: ${nameScore.toFixed(2)} < 0.5, nipScore: ${nipScore.toFixed(2)} < 0.9`)
+      console.log(`   ✅ AUTO-MATCH: Nr faktury + kwota pasują (nazwa/NIP nieistotne)`)
+      console.log(`      Numer faktury w tytule = silny wskaźnik płatności`)
+      console.log(`      nameScore: ${nameScore.toFixed(2)}, nipScore: ${nipScore.toFixed(2)}`)
     }
 
     return {
       invoiceId: invoice.id,
       paymentId: payment.id,
-      confidence: 0.80, // Below auto-match threshold (0.85)
+      confidence: 0.90, // Above auto-match threshold (0.85) - invoice number is strong indicator
       breakdown,
       reasons: [
-        'Numer faktury znaleziony w tytule',
+        '✅ Numer faktury znaleziony w tytule przelewu',
         `Kwota zgodna: ${payment.amount.toFixed(2)} PLN`,
-        '⚠️ Nazwa nadawcy nie zgadza się z nabywcą - wymaga weryfikacji',
+        'ℹ️ Nazwa nadawcy inna niż nabywca (jednostka organizacyjna?)',
       ],
     }
   }
@@ -604,6 +608,45 @@ export function calculateMatchConfidence(
         'Numer faktury dokładnie zgodny w tytule przelewu',
         identityReason,
         `Kwota: ${payment.amount.toFixed(2)} PLN (${amountDiffStr} PLN różnicy)`,
+      ],
+    }
+  }
+
+  // RULE: If invoice number EXACTLY in title (even without name/NIP) + reasonable amount = AUTO-MATCH
+  // Invoice number in payment title is a very strong indicator - people don't type invoice numbers randomly
+  // This handles organizational units paying for invoices (different name/NIP but correct invoice number)
+  if (invoiceNumberScore >= 0.95 && !nameOrNipStrongMatch && amountScore >= 0.5) {
+    const breakdown: MatchBreakdown = {
+      subaccount: subaccountScore,
+      amount: amountScore,
+      invoiceNumber: invoiceNumberScore,
+      name: nameScore,
+      nip: nipScore,
+      date: dateScore,
+    }
+
+    // Confidence based on amount match: 0.86-0.92 range
+    // Lower than with name/NIP match, but still above auto-match threshold
+    const adjustedConfidence = 0.86 + (amountScore - 0.5) * 0.12
+
+    if (debug) {
+      console.log(`   ✅ AUTO-MATCH: Nr faktury DOKŁADNIE w tytule (bez nazwy/NIP)`)
+      console.log(`      Numer faktury = bardzo silny wskaźnik`)
+      console.log(`      Confidence: ${adjustedConfidence.toFixed(2)}, amountScore: ${amountScore.toFixed(2)}`)
+    }
+
+    const amountDiff = payment.amount - invoice.gross_amount
+    const amountDiffStr = amountDiff > 0 ? `+${amountDiff.toFixed(2)}` : amountDiff.toFixed(2)
+
+    return {
+      invoiceId: invoice.id,
+      paymentId: payment.id,
+      confidence: Math.min(adjustedConfidence, 0.92),
+      breakdown,
+      reasons: [
+        '✅ Numer faktury dokładnie zgodny w tytule przelewu',
+        `Kwota: ${payment.amount.toFixed(2)} PLN (${amountDiffStr} PLN różnicy)`,
+        'ℹ️ Nazwa nadawcy inna niż nabywca (jednostka organizacyjna?)',
       ],
     }
   }
