@@ -91,8 +91,8 @@ function calculateInvoiceNumberScore(
   paymentTitle: string,
   paymentExtendedTitle?: string | null
 ): number {
-  // DEBUG: Log for problematic cases (PS 10, PS 17, PS 37)
-  const debugInvoices = ['10/12', '17/12', '37/12']
+  // DEBUG: Log for problematic cases (PS 10, PS 17, PS 37) and all cases for troubleshooting
+  const debugInvoices = ['10/12', '17/12', '37/12', '14/01'] // Added 14/01 for debugging
   const isDebugCase = debugInvoices.some(pattern => invoiceNumber.includes(pattern))
   if (isDebugCase) {
     console.log(`\n📊 DEBUG calculateInvoiceNumberScore:`)
