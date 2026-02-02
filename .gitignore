@@ -36,3 +36,7 @@ test-results
 .supabase
 
 .vercel
+
+# Claude Code / MCP configuration (SECURITY: contains API tokens)
+.mcp.json
+.claude/
