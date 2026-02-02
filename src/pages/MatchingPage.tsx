@@ -145,6 +145,9 @@ export function MatchingPage(): React.JSX.Element {
     payment: ReturnType<typeof paymentsCache.get>
   } | null>(null)
 
+  // State for unmatched invoice details dialog
+  const [selectedUnmatchedInvoice, setSelectedUnmatchedInvoice] = useState<typeof unmatchedInvoices[number] | null>(null)
+
   // Sorting state for tables
   type SortDirection = 'asc' | 'desc' | null
   type ConfirmedMatchesSortColumn = 'invoice_number' | 'buyer_name' | 'amount' | 'confidence' | 'match_type'
@@ -202,13 +205,26 @@ export function MatchingPage(): React.JSX.Element {
   }, [suggestions])
 
   // Manual matching state (with search)
-  const [searchInvoiceId, setSearchInvoiceId] = useState('')
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('')
   const [paymentSearchQuery, setPaymentSearchQuery] = useState('')
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null)
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
 
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // Filter invoices based on search query (ID or invoice number)
+  const filteredInvoices = invoiceSearchQuery.trim().length >= 2
+    ? unmatchedInvoices.filter(invoice => {
+        const query = invoiceSearchQuery.toLowerCase()
+        return (
+          invoice.invoice_number?.toLowerCase().includes(query) ||
+          invoice.id.toLowerCase().includes(query) ||
+          invoice.buyer_name?.toLowerCase().includes(query)
+        )
+      }).slice(0, 10) // Limit to 10 results
+    : []
 
   // Filter payments based on search query
   const filteredPayments = paymentSearchQuery.trim().length >= 2
@@ -224,14 +240,32 @@ export function MatchingPage(): React.JSX.Element {
       }).slice(0, 10) // Limit to 10 results
     : []
 
+  // Get selected invoice details for display
+  const selectedInvoiceDetails = selectedInvoiceId
+    ? unmatchedInvoices.find(inv => inv.id === selectedInvoiceId)
+    : null
+
+  // Get selected payment details for display
+  const selectedPaymentDetails = selectedPaymentId
+    ? unmatchedPayments.find(pay => pay.id === selectedPaymentId)
+    : null
+
   const handleSearchMatch = async () => {
-    if (!searchInvoiceId.trim() || !selectedPaymentId) {
+    if (!selectedInvoiceId || !selectedPaymentId) {
       toast.error('Wybierz fakturę i płatność')
       return
     }
-    await createManualMatch(searchInvoiceId.trim(), selectedPaymentId)
-    setSearchInvoiceId('')
+    await createManualMatch(selectedInvoiceId, selectedPaymentId)
+    setInvoiceSearchQuery('')
     setPaymentSearchQuery('')
+    setSelectedInvoiceId(null)
+    setSelectedPaymentId(null)
+  }
+
+  const handleCancelManualMatch = () => {
+    setInvoiceSearchQuery('')
+    setPaymentSearchQuery('')
+    setSelectedInvoiceId(null)
     setSelectedPaymentId(null)
   }
 
@@ -1035,23 +1069,67 @@ export function MatchingPage(): React.JSX.Element {
                 {/* Unmatched invoices tab */}
                 {selectedTab === 'unmatched' && (
                   <>
-                    {/* Manual matching - Search for payment */}
+                    {/* Manual matching - Search for invoice and payment */}
                     <div className="mb-6 rounded-lg border bg-muted/50 p-4">
                       <h4 className="mb-3 text-sm font-medium">Ręczne dopasowanie</h4>
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-end gap-3">
-                          <div className="w-1/3">
-                            <label className="mb-1 block text-xs text-muted-foreground">ID faktury</label>
-                            <Input
-                              placeholder="np. abc12345..."
-                              value={searchInvoiceId}
-                              onChange={(e) => setSearchInvoiceId(e.target.value)}
-                              className="font-mono text-sm"
-                            />
-                          </div>
-                          <div className="flex-1">
+                      <div className="flex flex-col gap-4">
+                        {/* Search fields row */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Invoice search */}
+                          <div>
                             <label className="mb-1 block text-xs text-muted-foreground">
-                              Szukaj płatności (nazwa, tytuł, kwota, numer faktury...)
+                              Szukaj faktury (numer, ID, nabywca)
+                            </label>
+                            <div className="relative">
+                              <FileText className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                              <Input
+                                placeholder="np. PS 17/12/2025 lub abc12..."
+                                value={invoiceSearchQuery}
+                                onChange={(e) => {
+                                  setInvoiceSearchQuery(e.target.value)
+                                  setSelectedInvoiceId(null)
+                                }}
+                                className="pl-9"
+                              />
+                            </div>
+                            {/* Invoice search results */}
+                            {invoiceSearchQuery.trim().length >= 2 && (
+                              <div className="mt-2 rounded border bg-background max-h-[150px] overflow-auto">
+                                {filteredInvoices.length === 0 ? (
+                                  <div className="p-2 text-center text-xs text-muted-foreground">
+                                    Brak wyników
+                                  </div>
+                                ) : (
+                                  filteredInvoices.map((invoice) => (
+                                    <button
+                                      key={invoice.id}
+                                      onClick={() => {
+                                        setSelectedInvoiceId(invoice.id)
+                                        setInvoiceSearchQuery(invoice.invoice_number)
+                                      }}
+                                      className={`flex w-full items-center justify-between p-2 text-left hover:bg-muted/50 text-sm ${
+                                        selectedInvoiceId === invoice.id ? 'bg-primary/10 border-l-2 border-l-primary' : ''
+                                      }`}
+                                    >
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-mono font-medium">{invoice.invoice_number}</div>
+                                        <div className="text-xs text-muted-foreground truncate">{invoice.buyer_name}</div>
+                                      </div>
+                                      <div className="text-right ml-2">
+                                        <div className="font-medium">{formatCurrency(invoice.gross_amount, invoice.currency)}</div>
+                                        {selectedInvoiceId === invoice.id && <Check className="h-3 w-3 text-primary ml-auto" />}
+                                      </div>
+                                    </button>
+                                  ))
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Payment search */}
+                          <div>
+                            <label className="mb-1 block text-xs text-muted-foreground">
+                              Szukaj płatności (nazwa, tytuł, kwota)
                             </label>
                             <div className="relative">
                               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1065,65 +1143,92 @@ export function MatchingPage(): React.JSX.Element {
                                 className="pl-9"
                               />
                             </div>
-                          </div>
-                          <Button
-                            onClick={handleSearchMatch}
-                            disabled={isProcessing || !searchInvoiceId.trim() || !selectedPaymentId}
-                          >
-                            <Link2 className="mr-2 h-4 w-4" />
-                            Dopasuj
-                          </Button>
-                        </div>
-
-                        {/* Search results */}
-                        {paymentSearchQuery.trim().length >= 2 && (
-                          <div className="rounded border bg-background">
-                            {filteredPayments.length === 0 ? (
-                              <div className="p-3 text-center text-sm text-muted-foreground">
-                                Brak wyników dla "{paymentSearchQuery}"
-                              </div>
-                            ) : (
-                              <div className="max-h-[200px] overflow-auto">
-                                {filteredPayments.map((payment) => (
-                                  <button
-                                    key={payment.id}
-                                    onClick={() => setSelectedPaymentId(payment.id)}
-                                    className={`flex w-full items-center justify-between p-3 text-left hover:bg-muted/50 ${
-                                      selectedPaymentId === payment.id ? 'bg-primary/10 border-l-2 border-l-primary' : ''
-                                    }`}
-                                  >
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-medium truncate">{payment.sender_name}</span>
-                                        <span className="text-xs font-mono text-muted-foreground">
-                                          P:{payment.id.slice(0, 8)}
-                                        </span>
+                            {/* Payment search results */}
+                            {paymentSearchQuery.trim().length >= 2 && (
+                              <div className="mt-2 rounded border bg-background max-h-[150px] overflow-auto">
+                                {filteredPayments.length === 0 ? (
+                                  <div className="p-2 text-center text-xs text-muted-foreground">
+                                    Brak wyników
+                                  </div>
+                                ) : (
+                                  filteredPayments.map((payment) => (
+                                    <button
+                                      key={payment.id}
+                                      onClick={() => {
+                                        setSelectedPaymentId(payment.id)
+                                        setPaymentSearchQuery(payment.sender_name || payment.title?.slice(0, 30) || '')
+                                      }}
+                                      className={`flex w-full items-center justify-between p-2 text-left hover:bg-muted/50 text-sm ${
+                                        selectedPaymentId === payment.id ? 'bg-primary/10 border-l-2 border-l-primary' : ''
+                                      }`}
+                                    >
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-medium truncate">{payment.sender_name}</div>
+                                        <div className="text-xs text-muted-foreground truncate">{payment.title}</div>
                                       </div>
-                                      <div className="text-xs text-muted-foreground truncate">
-                                        {payment.title}
+                                      <div className="text-right ml-2">
+                                        <div className="font-medium text-green-600">+{formatCurrency(payment.amount, payment.currency)}</div>
+                                        {selectedPaymentId === payment.id && <Check className="h-3 w-3 text-primary ml-auto" />}
                                       </div>
-                                      <div className="text-xs text-muted-foreground">
-                                        {formatDate(payment.transaction_date)}
-                                      </div>
-                                    </div>
-                                    <div className="text-right ml-4">
-                                      <div className="font-medium text-green-600">
-                                        +{formatCurrency(payment.amount, payment.currency)}
-                                      </div>
-                                      {selectedPaymentId === payment.id && (
-                                        <Check className="h-4 w-4 text-primary ml-auto" />
-                                      )}
-                                    </div>
-                                  </button>
-                                ))}
+                                    </button>
+                                  ))
+                                )}
                               </div>
                             )}
                           </div>
-                        )}
+                        </div>
 
-                        {selectedPaymentId && (
-                          <div className="text-sm text-muted-foreground">
-                            Wybrana płatność: <span className="font-mono">{selectedPaymentId.slice(0, 8)}...</span>
+                        {/* Selection summary and action buttons */}
+                        {(selectedInvoiceId || selectedPaymentId) && (
+                          <div className="rounded-lg border bg-background p-3">
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">Faktura: </span>
+                                  {selectedInvoiceDetails ? (
+                                    <span className="font-medium">
+                                      {selectedInvoiceDetails.invoice_number}
+                                      <span className="text-muted-foreground ml-2">
+                                        ({formatCurrency(selectedInvoiceDetails.gross_amount, selectedInvoiceDetails.currency)})
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground italic">nie wybrano</span>
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Płatność: </span>
+                                  {selectedPaymentDetails ? (
+                                    <span className="font-medium">
+                                      {selectedPaymentDetails.sender_name?.slice(0, 25)}...
+                                      <span className="text-green-600 ml-2">
+                                        +{formatCurrency(selectedPaymentDetails.amount, selectedPaymentDetails.currency)}
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground italic">nie wybrano</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={handleCancelManualMatch}
+                                >
+                                  <X className="mr-1 h-4 w-4" />
+                                  Anuluj
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={handleSearchMatch}
+                                  disabled={isProcessing || !selectedInvoiceId || !selectedPaymentId}
+                                >
+                                  <Check className="mr-1 h-4 w-4" />
+                                  Potwierdź dopasowanie
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1184,7 +1289,11 @@ export function MatchingPage(): React.JSX.Element {
                           </TableHeader>
                           <TableBody>
                             {sortedUnmatchedInvoices.map((invoice) => (
-                              <TableRow key={invoice.id}>
+                              <TableRow
+                                key={invoice.id}
+                                className="cursor-pointer hover:bg-muted/50"
+                                onClick={() => setSelectedUnmatchedInvoice(invoice)}
+                              >
                                 <TableCell>
                                   <ShortId id={invoice.id} prefix="F:" />
                                 </TableCell>
@@ -1196,37 +1305,47 @@ export function MatchingPage(): React.JSX.Element {
                                   {formatCurrency(invoice.gross_amount, invoice.currency)}
                                 </TableCell>
                                 <TableCell>{formatDate(invoice.due_date)}</TableCell>
-                                <TableCell>
-                                  <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        disabled={isProcessing}
-                                        title="Usuń fakturę"
-                                      >
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                      </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>Usunąć fakturę?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                          Czy na pewno chcesz usunąć fakturę <strong>{invoice.invoice_number}</strong>?
-                                          Ta operacja jest nieodwracalna.
-                                        </AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel>Anuluj</AlertDialogCancel>
-                                        <AlertDialogAction
-                                          onClick={() => deleteInvoice(invoice.id)}
-                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => setSelectedUnmatchedInvoice(invoice)}
+                                      title="Zobacz szczegóły"
+                                    >
+                                      <Info className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          disabled={isProcessing}
+                                          title="Usuń fakturę"
                                         >
-                                          Usuń
-                                        </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
+                                          <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Usunąć fakturę?</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Czy na pewno chcesz usunąć fakturę <strong>{invoice.invoice_number}</strong>?
+                                            Ta operacja jest nieodwracalna.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => deleteInvoice(invoice.id)}
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                          >
+                                            Usuń
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -1688,6 +1807,163 @@ export function MatchingPage(): React.JSX.Element {
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Usuń dopasowanie
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Unmatched Invoice Details Dialog */}
+        <Dialog open={!!selectedUnmatchedInvoice} onOpenChange={() => setSelectedUnmatchedInvoice(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-blue-600" />
+                Szczegóły faktury
+              </DialogTitle>
+              <DialogDescription>
+                Faktura niedopasowana do płatności
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedUnmatchedInvoice && (
+              <div className="space-y-4">
+                {/* Invoice number */}
+                <div className="flex items-start gap-3">
+                  <Hash className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Numer faktury</div>
+                    <div className="font-mono text-lg font-bold">{selectedUnmatchedInvoice.invoice_number}</div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Buyer info */}
+                <div className="flex items-start gap-3">
+                  <Building2 className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Nabywca</div>
+                    <div className="font-medium">{selectedUnmatchedInvoice.buyer_name}</div>
+                    {selectedUnmatchedInvoice.buyer_nip && (
+                      <div className="text-sm text-muted-foreground">NIP: {selectedUnmatchedInvoice.buyer_nip}</div>
+                    )}
+                    {selectedUnmatchedInvoice.buyer_subaccount && (
+                      <div className="text-sm text-muted-foreground font-mono">
+                        Subkonto: {selectedUnmatchedInvoice.buyer_subaccount}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Amounts */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-start gap-3">
+                    <Banknote className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <div className="text-xs text-muted-foreground">Kwota brutto</div>
+                      <div className="text-xl font-bold">
+                        {formatCurrency(selectedUnmatchedInvoice.gross_amount, selectedUnmatchedInvoice.currency)}
+                      </div>
+                    </div>
+                  </div>
+                  {selectedUnmatchedInvoice.net_amount && (
+                    <div>
+                      <div className="text-xs text-muted-foreground">Kwota netto</div>
+                      <div className="font-medium">
+                        {formatCurrency(selectedUnmatchedInvoice.net_amount, selectedUnmatchedInvoice.currency)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Dates */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-start gap-3">
+                    <Calendar className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <div className="text-xs text-muted-foreground">Data wystawienia</div>
+                      <div>{formatDate(selectedUnmatchedInvoice.issue_date)}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Calendar className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <div className="text-xs text-muted-foreground">Termin płatności</div>
+                      <div className={new Date(selectedUnmatchedInvoice.due_date) < new Date() ? 'text-red-600 font-medium' : ''}>
+                        {formatDate(selectedUnmatchedInvoice.due_date)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Status and invoice kind */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Status</div>
+                    <Badge variant={
+                      selectedUnmatchedInvoice.payment_status === 'overdue' ? 'destructive' :
+                      selectedUnmatchedInvoice.payment_status === 'pending' ? 'secondary' : 'default'
+                    }>
+                      {selectedUnmatchedInvoice.payment_status === 'overdue' ? 'Po terminie' :
+                       selectedUnmatchedInvoice.payment_status === 'pending' ? 'Oczekuje' :
+                       selectedUnmatchedInvoice.payment_status === 'paid' ? 'Opłacona' :
+                       selectedUnmatchedInvoice.payment_status}
+                    </Badge>
+                  </div>
+                  {selectedUnmatchedInvoice.invoice_kind && (
+                    <div>
+                      <div className="text-xs text-muted-foreground">Rodzaj dokumentu</div>
+                      <div className="text-sm">{selectedUnmatchedInvoice.invoice_kind}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Fakturownia ID if exists */}
+                {selectedUnmatchedInvoice.fakturownia_id && (
+                  <div>
+                    <div className="text-xs text-muted-foreground">Fakturownia ID</div>
+                    <div className="text-sm font-mono">{selectedUnmatchedInvoice.fakturownia_id}</div>
+                  </div>
+                )}
+
+                {/* Full ID */}
+                <div className="pt-2 border-t">
+                  <button
+                    onClick={() => copyToClipboard(selectedUnmatchedInvoice.id)}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    ID: {selectedUnmatchedInvoice.id}
+                    <Copy className="h-3 w-3" />
+                  </button>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-between pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedInvoiceId(selectedUnmatchedInvoice.id)
+                      setInvoiceSearchQuery(selectedUnmatchedInvoice.invoice_number)
+                      setSelectedUnmatchedInvoice(null)
+                    }}
+                  >
+                    <Link2 className="mr-2 h-4 w-4" />
+                    Dopasuj ręcznie
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedUnmatchedInvoice(null)}
+                  >
+                    Zamknij
                   </Button>
                 </div>
               </div>

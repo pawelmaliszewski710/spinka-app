@@ -91,8 +91,9 @@ function calculateInvoiceNumberScore(
   paymentTitle: string,
   paymentExtendedTitle?: string | null
 ): number {
-  // DEBUG: Log for problematic cases
-  const isDebugCase = invoiceNumber.includes('37') && paymentTitle.includes('7/12')
+  // DEBUG: Log for problematic cases (PS 17 and PS 37 with date format)
+  const isDebugCase = (invoiceNumber.includes('17/12') || invoiceNumber.includes('37')) &&
+                      (paymentTitle.includes('7/12') || paymentTitle.includes('17/12'))
   if (isDebugCase) {
     console.log(`\n📊 DEBUG calculateInvoiceNumberScore:`)
     console.log(`   invoiceNumber: "${invoiceNumber}"`)
