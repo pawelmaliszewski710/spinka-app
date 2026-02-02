@@ -12,6 +12,27 @@ export function normalizeString(str: string): string {
 }
 
 /**
+ * Normalize payment title by removing spaces that break invoice number patterns.
+ * Bank systems sometimes insert random spaces in invoice numbers.
+ *
+ * Handles cases like:
+ * - "PS 1 7/12/2025" → "PS 17/12/2025" (space between digits in sequence number)
+ * - "PS 17/12/ 2025" → "PS 17/12/2025" (space after separator before year)
+ * - "INV/PS 1 7/12/2025" → "INV/PS 17/12/2025"
+ *
+ * Does NOT remove spaces in other contexts (e.g., "FIRMA XYZ" stays "FIRMA XYZ")
+ */
+export function normalizePaymentTitle(title: string): string {
+  return title
+    // Step 1: Remove spaces between digits (e.g., "1 7" → "17", "1  7" → "17")
+    .replace(/(\d)\s+(\d)/g, '$1$2')
+    // Step 2: Remove spaces after separators before digits (e.g., "/ 2025" → "/2025")
+    .replace(/([\/\\_.\-])\s+(\d)/g, '$1$2')
+    // Step 3: Remove spaces before separators after digits (e.g., "17 /" → "17/")
+    .replace(/(\d)\s+([\/\\_.\-])/g, '$1$2')
+}
+
+/**
  * Calculate Levenshtein distance between two strings
  */
 function levenshteinDistance(a: string, b: string): number {

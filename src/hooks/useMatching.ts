@@ -137,10 +137,8 @@ export function useMatching(): UseMatchingResult {
       setUnmatchedInvoices(unmatched.invoices)
       setUnmatchedPayments(unmatched.payments)
 
-      // Clear previous auto matches and suggestions
-      setAutoMatches([])
-      setSuggestions([])
-      setGroupSuggestions([])
+      // NOTE: Do NOT clear suggestions here - they are managed by runAutoMatch()
+      // Clearing them here would wipe suggestions after runAutoMatch() completes
     } catch (error) {
       console.error('Error refreshing data:', error)
       toast.error('Błąd podczas pobierania danych')
@@ -175,10 +173,22 @@ export function useMatching(): UseMatchingResult {
     setIsProcessing(true)
     setProgress({ current: 0, total: 100, phase: 'analyzing', message: 'Analizowanie płatności...' })
 
+    // Clear previous suggestions before starting new analysis
+    setAutoMatches([])
+    setSuggestions([])
+    setGroupSuggestions([])
+
     try {
       console.log('\n🔄 useMatching.runAutoMatch() - START')
       console.log(`   Niedopasowane faktury: ${unmatchedInvoices.length}`)
       console.log(`   Niedopasowane płatności: ${unmatchedPayments.length}`)
+
+      // Build local lookup maps from current data (more reliable than state cache)
+      const localInvoicesMap = new Map<string, Invoice>()
+      unmatchedInvoices.forEach((inv) => localInvoicesMap.set(inv.id, inv))
+
+      const localPaymentsMap = new Map<string, Payment>()
+      unmatchedPayments.forEach((pay) => localPaymentsMap.set(pay.id, pay))
 
       const {
         data: { user },
@@ -274,13 +284,18 @@ export function useMatching(): UseMatchingResult {
       setProgress({ current: 85, total: 100, phase: 'analyzing', message: 'Przygotowywanie sugestii...' })
 
       // Process regular suggestions (MatchResult -> MatchSuggestion)
+      // Use local maps for reliable lookup (state cache might be stale)
       const suggestionsList: MatchSuggestion[] = result.suggestions
         .filter((s): s is MatchResult => 'invoiceId' in s && 'paymentId' in s)
         .map((match) => {
-          const invoice = invoicesCache.get(match.invoiceId)
-          const payment = paymentsCache.get(match.paymentId)
+          // Try local map first, then fall back to state cache
+          const invoice = localInvoicesMap.get(match.invoiceId) || invoicesCache.get(match.invoiceId)
+          const payment = localPaymentsMap.get(match.paymentId) || paymentsCache.get(match.paymentId)
 
-          if (!invoice || !payment) return null
+          if (!invoice || !payment) {
+            console.warn(`⚠️ Suggestion skipped - missing data: invoiceId=${match.invoiceId}, paymentId=${match.paymentId}`)
+            return null
+          }
 
           return {
             invoice,
@@ -296,7 +311,14 @@ export function useMatching(): UseMatchingResult {
       const directSuggestions = result.suggestions
         .filter((s): s is MatchSuggestion => 'invoice' in s && 'payment' in s)
 
-      setSuggestions([...suggestionsList, ...directSuggestions])
+      const allSuggestions = [...suggestionsList, ...directSuggestions]
+      console.log(`📋 Mapowanie sugestii:`)
+      console.log(`   - Z algorytmu: ${result.suggestions.length}`)
+      console.log(`   - Po mapowaniu (suggestionsList): ${suggestionsList.length}`)
+      console.log(`   - Bezpośrednie (directSuggestions): ${directSuggestions.length}`)
+      console.log(`   - Razem do wyświetlenia: ${allSuggestions.length}`)
+
+      setSuggestions(allSuggestions)
 
       // Set group suggestions
       setGroupSuggestions(result.groupSuggestions)

@@ -15,12 +15,13 @@ function getDefaultDates() {
 }
 
 // Domyślne ustawienia
+// UWAGA: Domyślnie NIE importujemy faktur anulowanych (ani w rodzaju, ani w statusie)
 function getDefaultSettings(): FakturowniaSettings {
   const dates = getDefaultDates()
   return {
     dateFrom: dates.dateFrom,
     dateTo: dates.dateTo,
-    kinds: ['vat', 'proforma', 'canceled', 'correction'],
+    kinds: ['vat', 'proforma', 'correction'],
     statuses: ['issued', 'sent', 'paid', 'partial'],
     prefixFilter: '',
   }

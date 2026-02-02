@@ -25,6 +25,7 @@ const INVOICE_STATUSES = [
   { value: 'sent', label: 'Wysłana' },
   { value: 'paid', label: 'Opłacona' },
   { value: 'partial', label: 'Częściowo opłacona' },
+  { value: 'canceled', label: 'Anulowana' },
 ]
 
 export function FakturowniaApiImport(): React.JSX.Element {
@@ -94,7 +95,8 @@ export function FakturowniaApiImport(): React.JSX.Element {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     setDateFrom(firstDay.toISOString().split('T')[0])
     setDateTo(lastDay.toISOString().split('T')[0])
-    setSelectedKinds(['vat', 'proforma', 'canceled', 'correction'])
+    // Domyślnie NIE importuj anulowanych (ani w rodzaju, ani w statusie)
+    setSelectedKinds(['vat', 'proforma', 'correction'])
     setSelectedStatuses(['issued', 'sent', 'paid', 'partial'])
     setPrefixFilter('')
   }

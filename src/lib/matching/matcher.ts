@@ -12,6 +12,7 @@ import {
   normalizeString,
   extractSequenceNumber,
   extractDatePart,
+  normalizePaymentTitle,
 } from './string-utils'
 
 /**
@@ -100,12 +101,17 @@ function calculateInvoiceNumberScore(
   }
 
   // Combine title and extended_title for searching
-  const searchText = paymentExtendedTitle
+  const rawSearchText = paymentExtendedTitle
     ? `${paymentTitle} ${paymentExtendedTitle}`
     : paymentTitle
 
+  // Normalize payment title to remove bank-inserted spaces in invoice numbers
+  // e.g., "PS 1 7/12/2025" → "PS 17/12/2025", "PS 17/12/ 2025" → "PS 17/12/2025"
+  const searchText = normalizePaymentTitle(rawSearchText)
+
   if (isDebugCase) {
-    console.log(`   searchText: "${searchText}"`)
+    console.log(`   rawSearchText: "${rawSearchText}"`)
+    console.log(`   searchText (normalized): "${searchText}"`)
   }
 
   // 1. Try flexible matching first (handles separator variations)
@@ -1122,9 +1128,12 @@ export function findPaymentForInvoiceSum(
     confidence += match.score * 0.1
 
     // Check if any invoice numbers are in payment title
-    const paymentText = payment.extended_title
-      ? `${payment.title} ${payment.extended_title}`
-      : payment.title
+    // Normalize to handle bank-inserted spaces (e.g., "PS 1 7/12/2025" → "PS 17/12/2025")
+    const paymentText = normalizePaymentTitle(
+      payment.extended_title
+        ? `${payment.title} ${payment.extended_title}`
+        : payment.title
+    )
 
     let invoiceNumbersFound = 0
     for (const inv of invoices) {
@@ -1209,9 +1218,12 @@ export function findBuyerPaymentSuggestions(
     if (!match.matches || match.score < 0.6) continue
 
     // Check if payment title doesn't explicitly reference a different invoice
-    const paymentText = payment.extended_title
-      ? `${payment.title} ${payment.extended_title}`
-      : payment.title
+    // Normalize to handle bank-inserted spaces (e.g., "PS 1 7/12/2025" → "PS 17/12/2025")
+    const paymentText = normalizePaymentTitle(
+      payment.extended_title
+        ? `${payment.title} ${payment.extended_title}`
+        : payment.title
+    )
 
     const extractedInvoices = extractMultipleInvoiceNumbers(paymentText)
 
