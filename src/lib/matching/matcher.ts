@@ -417,18 +417,8 @@ export function calculateMatchConfidence(
     payment.extended_title
   )
 
-  // If title explicitly mentions a DIFFERENT invoice, OVERRIDE invoiceNumberScore to 0
-  // This is CRITICAL because many early-return rules depend on invoiceNumberScore >= 0.9
-  // Without this override, those rules could still fire and cause false auto-matches
-  let effectiveInvoiceNumberScore = invoiceNumberScore
-  if (titleContainsDifferentInvoice) {
-    effectiveInvoiceNumberScore = 0 // Payment is for DIFFERENT invoice - never match on invoice number!
-    if (debug) {
-      console.log(`   ⚠️ UWAGA: Tytuł przelewu wskazuje na INNĄ fakturę!`)
-      console.log(`      invoiceNumberScore NADPISANE: ${invoiceNumberScore} → 0`)
-    }
-  } else if (debug) {
-    console.log(`   ✓ Tytuł przelewu nie wskazuje na inną fakturę`)
+  if (debug && titleContainsDifferentInvoice) {
+    console.log(`   ⚠️ UWAGA: Tytuł przelewu wskazuje na INNĄ fakturę!`)
   }
 
   // If subaccount matches perfectly, we need additional verification
@@ -437,7 +427,7 @@ export function calculateMatchConfidence(
   if (subaccountScore >= 1.0) {
     const dateProximity = calculateDateProximityForSubaccount(invoice.due_date, payment.transaction_date)
 
-    const hasInvoiceNumberMatch = effectiveInvoiceNumberScore >= 0.9
+    const hasInvoiceNumberMatch = invoiceNumberScore >= 0.9
     const hasExactAmountMatch = amountScore >= 0.99
     const hasDateProximityMatch = dateProximity.isAcceptable
 
@@ -539,8 +529,7 @@ export function calculateMatchConfidence(
 
   // RULE: If invoice number in title + amount matches + name matches = 100% confidence
   // This is considered a definitive match
-  // NOTE: Uses effectiveInvoiceNumberScore (0 if title mentions DIFFERENT invoice)
-  if (effectiveInvoiceNumberScore >= 0.9 && amountScore >= 0.9 && nameScore >= 0.5) {
+  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && nameScore >= 0.5) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -570,9 +559,8 @@ export function calculateMatchConfidence(
   // RULE: If invoice number in title + amount matches + (name OR NIP matches) = high confidence
   // Nazwa musi pasować przynajmniej częściowo (>= 0.5) LUB NIP musi pasować (>= 0.9)
   // NIP potwierdza tożsamość nawet gdy nazwa jest inna (np. jednostki organizacyjne)
-  // NOTE: Uses effectiveInvoiceNumberScore (0 if title mentions DIFFERENT invoice)
   const nameOrNipMatches = nameScore >= 0.5 || nipScore >= 0.9
-  if (effectiveInvoiceNumberScore >= 0.9 && amountScore >= 0.9 && nameOrNipMatches) {
+  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && nameOrNipMatches) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -608,8 +596,8 @@ export function calculateMatchConfidence(
   // Rationale: If someone explicitly writes invoice number in payment title, they're paying that invoice.
   // The probability of someone typing a specific invoice number and NOT paying for it is very low.
   // Name/NIP mismatch can happen with organizational units (e.g., DOM POMOCY paying for MIASTO WARSZAWA).
-  // NOTE: Uses effectiveInvoiceNumberScore (0 if title mentions DIFFERENT invoice)
-  if (effectiveInvoiceNumberScore >= 0.9 && amountScore >= 0.9 && !nameOrNipMatches) {
+  // EXCEPTION: If title contains a DIFFERENT invoice number, don't auto-match!
+  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && !nameOrNipMatches && !titleContainsDifferentInvoice) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -642,9 +630,8 @@ export function calculateMatchConfidence(
   // This handles cases where payment title explicitly mentions invoice number (e.g., "Faktura numer PS 95/11/2025")
   // Even if amount differs by up to 10% (could be interest, fees, partial payment, or invoice correction)
   // NIP >= 0.9 can substitute for name match (organizational units may have different display names)
-  // NOTE: Uses effectiveInvoiceNumberScore (0 if title mentions DIFFERENT invoice)
   const nameOrNipStrongMatch = nameScore >= 0.8 || nipScore >= 0.9
-  if (effectiveInvoiceNumberScore >= 0.95 && nameOrNipStrongMatch && amountScore >= 0.5) {
+  if (invoiceNumberScore >= 0.95 && nameOrNipStrongMatch && amountScore >= 0.5) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -687,8 +674,8 @@ export function calculateMatchConfidence(
   // Invoice number in payment title is a very strong indicator - people don't type invoice numbers randomly
   // This handles organizational units paying for invoices (different name/NIP but correct invoice number)
   // IMPORTANT: Require exact amount match (>= 0.9) to prevent false positives
-  // NOTE: Uses effectiveInvoiceNumberScore (0 if title mentions DIFFERENT invoice)
-  if (effectiveInvoiceNumberScore >= 0.95 && !nameOrNipStrongMatch && amountScore >= 0.9) {
+  // EXCEPTION: If title contains a DIFFERENT invoice number, don't auto-match!
+  if (invoiceNumberScore >= 0.95 && !nameOrNipStrongMatch && amountScore >= 0.9 && !titleContainsDifferentInvoice) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
