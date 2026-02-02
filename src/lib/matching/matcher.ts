@@ -332,6 +332,51 @@ function calculateDateProximityForSubaccount(dueDate: string, paymentDate: strin
 }
 
 /**
+ * Check if payment title contains a DIFFERENT invoice number than the one we're matching
+ * If title says "Faktura PS 7/12/2025" but we're trying to match PS 6/12/2025 - return true
+ * This helps prevent false auto-matches when payment is clearly for another invoice
+ */
+function paymentTitleContainsDifferentInvoice(
+  invoiceNumber: string,
+  paymentTitle: string,
+  extendedTitle?: string | null
+): boolean {
+  const searchText = normalizePaymentTitle(
+    extendedTitle ? `${paymentTitle} ${extendedTitle}` : paymentTitle
+  )
+
+  // Extract all invoice numbers from payment title
+  const extractedNumbers = extractMultipleInvoiceNumbers(searchText)
+  if (extractedNumbers.length === 0) {
+    return false // No invoice numbers in title - can't determine
+  }
+
+  // Get sequence and date from our invoice
+  const ourSeq = extractSequenceNumber(invoiceNumber)
+  const ourDate = extractDatePart(invoiceNumber)
+
+  // Check each extracted number - if ANY is a clearly different invoice, return true
+  for (const extracted of extractedNumbers) {
+    const extractedSeq = extractSequenceNumber(extracted)
+    const extractedDate = extractDatePart(extracted)
+
+    // If both have sequence + date format, compare them
+    if (ourSeq && extractedSeq && ourDate && extractedDate) {
+      // Same date, different sequence = different invoice for same period (e.g., PS 6/12/2025 vs PS 7/12/2025)
+      if (ourDate === extractedDate && ourSeq !== extractedSeq) {
+        return true // Payment explicitly for DIFFERENT invoice
+      }
+      // Different date, regardless of sequence = different invoice
+      if (ourDate !== extractedDate) {
+        return true // Payment explicitly for DIFFERENT invoice
+      }
+    }
+  }
+
+  return false // No conflicting invoice numbers found
+}
+
+/**
  * Calculate overall match confidence between an invoice and payment
  * Extended Payment type to include sender_subaccount and extended_title
  */
@@ -363,6 +408,18 @@ export function calculateMatchConfidence(
   const nameScore = calculateNameScore(invoice.buyer_name, payment.sender_name)
   const nipScore = calculateNIPScore(invoice.buyer_nip, payment.title, payment.extended_title)
   const dateScore = calculateDateScore(invoice.due_date, payment.transaction_date)
+
+  // CRITICAL: Check if payment title explicitly mentions a DIFFERENT invoice
+  // E.g., title "Faktura PS 7/12/2025" when we're matching PS 6/12/2025 = payment is for OTHER invoice
+  const titleContainsDifferentInvoice = paymentTitleContainsDifferentInvoice(
+    invoice.invoice_number,
+    payment.title,
+    payment.extended_title
+  )
+
+  if (debug && titleContainsDifferentInvoice) {
+    console.log(`   ⚠️ UWAGA: Tytuł przelewu wskazuje na INNĄ fakturę!`)
+  }
 
   // If subaccount matches perfectly, we need additional verification
   // Subaccount identifies the contractor, but the same contractor sends monthly invoices
@@ -539,7 +596,8 @@ export function calculateMatchConfidence(
   // Rationale: If someone explicitly writes invoice number in payment title, they're paying that invoice.
   // The probability of someone typing a specific invoice number and NOT paying for it is very low.
   // Name/NIP mismatch can happen with organizational units (e.g., DOM POMOCY paying for MIASTO WARSZAWA).
-  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && !nameOrNipMatches) {
+  // EXCEPTION: If title contains a DIFFERENT invoice number, don't auto-match!
+  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && !nameOrNipMatches && !titleContainsDifferentInvoice) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -616,7 +674,8 @@ export function calculateMatchConfidence(
   // Invoice number in payment title is a very strong indicator - people don't type invoice numbers randomly
   // This handles organizational units paying for invoices (different name/NIP but correct invoice number)
   // IMPORTANT: Require exact amount match (>= 0.9) to prevent false positives
-  if (invoiceNumberScore >= 0.95 && !nameOrNipStrongMatch && amountScore >= 0.9) {
+  // EXCEPTION: If title contains a DIFFERENT invoice number, don't auto-match!
+  if (invoiceNumberScore >= 0.95 && !nameOrNipStrongMatch && amountScore >= 0.9 && !titleContainsDifferentInvoice) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -714,6 +773,22 @@ export function calculateMatchConfidence(
   }
 
   let finalConfidence = Math.round(confidence * 100) / 100
+
+  // === BLOKADA: Tytuł przelewu wskazuje na INNĄ fakturę ===
+  // Jeśli tytuł przelewu zawiera konkretny numer innej faktury (np. "Faktura PS 7/12/2025"
+  // gdy dopasowujemy PS 6/12/2025), to płatność jest za INNĄ fakturę!
+  // W takim przypadku NIGDY nie dawaj auto-match - tylko sugestia.
+  if (titleContainsDifferentInvoice && finalConfidence >= CONFIDENCE_THRESHOLDS.HIGH) {
+    const adjustedConfidence = CONFIDENCE_THRESHOLDS.HIGH - 0.01 // 0.84
+
+    if (debug) {
+      console.log(`   ⚠️ BLOKADA: Tytuł przelewu wskazuje na INNĄ fakturę!`)
+      console.log(`      Confidence obniżone: ${finalConfidence} → ${adjustedConfidence}`)
+    }
+
+    reasons.push('⚠️ Tytuł przelewu wskazuje na inną fakturę - wymaga weryfikacji')
+    finalConfidence = adjustedConfidence
+  }
 
   // === BLOKADA: Nazwa musi pasować do auto-match (z wyjątkiem gdy NIP pasuje) ===
   // Jeśli nazwa nadawcy NIE pasuje do nabywcy faktury (score < 0.5),
