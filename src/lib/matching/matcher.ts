@@ -91,14 +91,16 @@ function calculateInvoiceNumberScore(
   paymentTitle: string,
   paymentExtendedTitle?: string | null
 ): number {
-  // DEBUG: Log for problematic cases (PS 17 and PS 37 with date format)
-  const isDebugCase = (invoiceNumber.includes('17/12') || invoiceNumber.includes('37')) &&
-                      (paymentTitle.includes('7/12') || paymentTitle.includes('17/12'))
+  // DEBUG: Log for problematic cases (PS 10, PS 17, PS 37)
+  const debugInvoices = ['10/12', '17/12', '37/12']
+  const isDebugCase = debugInvoices.some(pattern => invoiceNumber.includes(pattern))
   if (isDebugCase) {
     console.log(`\n📊 DEBUG calculateInvoiceNumberScore:`)
     console.log(`   invoiceNumber: "${invoiceNumber}"`)
-    console.log(`   paymentTitle: "${paymentTitle}"`)
-    console.log(`   paymentExtendedTitle: "${paymentExtendedTitle}"`)
+    console.log(`   paymentTitle: "${paymentTitle.substring(0, 100)}..."`)
+    if (paymentExtendedTitle) {
+      console.log(`   paymentExtendedTitle: "${paymentExtendedTitle.substring(0, 100)}..."`)
+    }
   }
 
   // Combine title and extended_title for searching
@@ -820,23 +822,46 @@ export function findMatches(
   const allMatches: MatchResult[] = []
   let actualComparisons = 0
 
+  // Track specific invoices for debug
+  const debugInvoicePatterns = ['10/12', '17/12', '37/12']
+
   for (const invoice of matchableInvoices) {
+    const isTrackedInvoice = debugInvoicePatterns.some(p => invoice.invoice_number.includes(p))
+
     // Pobierz tylko płatności z odpowiednich bucketów (ta sama waluta + podobna kwota)
     const candidatePayments = getCandidatePayments(invoice)
 
+    if (isTrackedInvoice) {
+      console.log(`\n🔍 [TRACKING] Faktura ${invoice.invoice_number} (${invoice.gross_amount} PLN)`)
+      console.log(`   Kandydatów płatności: ${candidatePayments.length}`)
+    }
+
     for (const payment of candidatePayments) {
       actualComparisons++
-      const result = calculateMatchConfidence(invoice, payment, debug)
+
+      if (isTrackedInvoice) {
+        console.log(`   → Porównuję z płatnością: ${payment.amount} PLN, tytuł: "${payment.title.substring(0, 60)}..."`)
+      }
+
+      const result = calculateMatchConfidence(invoice, payment, debug || isTrackedInvoice)
+
+      if (isTrackedInvoice) {
+        console.log(`     Confidence: ${result.confidence.toFixed(3)}, threshold: ${CONFIDENCE_THRESHOLDS.MEDIUM}`)
+      }
 
       // Only consider matches with some confidence
       if (result.confidence >= CONFIDENCE_THRESHOLDS.MEDIUM) {
         allMatches.push(result)
-        if (debug) {
+        if (debug || isTrackedInvoice) {
           console.log(`   ✓ Dodano do listy potencjalnych dopasowań`)
         }
-      } else if (debug) {
-        console.log(`   ✗ Pominięto (confidence ${result.confidence} < ${CONFIDENCE_THRESHOLDS.MEDIUM})`)
+      } else if (debug || isTrackedInvoice) {
+        console.log(`   ✗ Pominięto (confidence ${result.confidence.toFixed(3)} < ${CONFIDENCE_THRESHOLDS.MEDIUM})`)
       }
+    }
+
+    if (isTrackedInvoice && candidatePayments.length === 0) {
+      console.log(`   ⚠️ BRAK kandydatów płatności w bucket! Sprawdź kwotę i walutę.`)
     }
   }
 
