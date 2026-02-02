@@ -612,10 +612,11 @@ export function calculateMatchConfidence(
     }
   }
 
-  // RULE: If invoice number EXACTLY in title (even without name/NIP) + reasonable amount = AUTO-MATCH
+  // RULE: If invoice number EXACTLY in title (even without name/NIP) + EXACT amount = AUTO-MATCH
   // Invoice number in payment title is a very strong indicator - people don't type invoice numbers randomly
   // This handles organizational units paying for invoices (different name/NIP but correct invoice number)
-  if (invoiceNumberScore >= 0.95 && !nameOrNipStrongMatch && amountScore >= 0.5) {
+  // IMPORTANT: Require exact amount match (>= 0.9) to prevent false positives
+  if (invoiceNumberScore >= 0.95 && !nameOrNipStrongMatch && amountScore >= 0.9) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -625,27 +626,20 @@ export function calculateMatchConfidence(
       date: dateScore,
     }
 
-    // Confidence based on amount match: 0.86-0.92 range
-    // Lower than with name/NIP match, but still above auto-match threshold
-    const adjustedConfidence = 0.86 + (amountScore - 0.5) * 0.12
-
     if (debug) {
-      console.log(`   ✅ AUTO-MATCH: Nr faktury DOKŁADNIE w tytule (bez nazwy/NIP)`)
+      console.log(`   ✅ AUTO-MATCH: Nr faktury DOKŁADNIE w tytule + kwota zgodna (bez nazwy/NIP)`)
       console.log(`      Numer faktury = bardzo silny wskaźnik`)
-      console.log(`      Confidence: ${adjustedConfidence.toFixed(2)}, amountScore: ${amountScore.toFixed(2)}`)
+      console.log(`      invoiceNumberScore: ${invoiceNumberScore.toFixed(2)}, amountScore: ${amountScore.toFixed(2)}`)
     }
-
-    const amountDiff = payment.amount - invoice.gross_amount
-    const amountDiffStr = amountDiff > 0 ? `+${amountDiff.toFixed(2)}` : amountDiff.toFixed(2)
 
     return {
       invoiceId: invoice.id,
       paymentId: payment.id,
-      confidence: Math.min(adjustedConfidence, 0.92),
+      confidence: 0.90, // High confidence - invoice number + exact amount
       breakdown,
       reasons: [
         '✅ Numer faktury dokładnie zgodny w tytule przelewu',
-        `Kwota: ${payment.amount.toFixed(2)} PLN (${amountDiffStr} PLN różnicy)`,
+        `Kwota zgodna: ${payment.amount.toFixed(2)} PLN`,
         'ℹ️ Nazwa nadawcy inna niż nabywca (jednostka organizacyjna?)',
       ],
     }
