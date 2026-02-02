@@ -499,9 +499,11 @@ export function calculateMatchConfidence(
     }
   }
 
-  // RULE: If invoice number in title + amount matches + name somewhat matches = high confidence
-  // UWAGA: Nazwa musi pasować przynajmniej częściowo (>= 0.5), żeby dać auto-match
-  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && nameScore >= 0.5) {
+  // RULE: If invoice number in title + amount matches + (name OR NIP matches) = high confidence
+  // Nazwa musi pasować przynajmniej częściowo (>= 0.5) LUB NIP musi pasować (>= 0.9)
+  // NIP potwierdza tożsamość nawet gdy nazwa jest inna (np. jednostki organizacyjne)
+  const nameOrNipMatches = nameScore >= 0.5 || nipScore >= 0.9
+  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && nameOrNipMatches) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -511,8 +513,13 @@ export function calculateMatchConfidence(
       date: dateScore,
     }
 
+    const identityReason = nipScore >= 0.9
+      ? (nameScore >= 0.5 ? 'Nazwa i NIP zgodne' : '✅ NIP potwierdza tożsamość (różna nazwa nadawcy)')
+      : 'Nazwa nadawcy pasuje do nabywcy'
+
     if (debug) {
-      console.log(`   ✅ WYSOKIE DOPASOWANIE: Nr faktury + kwota + nazwa = 95%`)
+      console.log(`   ✅ WYSOKIE DOPASOWANIE: Nr faktury + kwota + (nazwa/NIP) = 95%`)
+      console.log(`      nameScore: ${nameScore.toFixed(2)}, nipScore: ${nipScore.toFixed(2)}`)
     }
 
     return {
@@ -523,13 +530,13 @@ export function calculateMatchConfidence(
       reasons: [
         'Numer faktury znaleziony w tytule',
         `Kwota zgodna: ${payment.amount.toFixed(2)} PLN`,
-        'Nazwa nadawcy pasuje do nabywcy',
+        identityReason,
       ],
     }
   }
 
-  // RULE: If invoice number + amount matches but name doesn't = only suggestion (not auto-match)
-  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && nameScore < 0.5) {
+  // RULE: If invoice number + amount matches but neither name nor NIP matches = only suggestion
+  if (invoiceNumberScore >= 0.9 && amountScore >= 0.9 && !nameOrNipMatches) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -540,7 +547,8 @@ export function calculateMatchConfidence(
     }
 
     if (debug) {
-      console.log(`   ⚠️ SUGESTIA: Nr faktury + kwota pasują, ale nazwa NIE (${nameScore.toFixed(2)} < 0.5)`)
+      console.log(`   ⚠️ SUGESTIA: Nr faktury + kwota pasują, ale ani nazwa ani NIP nie pasują`)
+      console.log(`      nameScore: ${nameScore.toFixed(2)} < 0.5, nipScore: ${nipScore.toFixed(2)} < 0.9`)
     }
 
     return {
@@ -556,10 +564,12 @@ export function calculateMatchConfidence(
     }
   }
 
-  // RULE: If invoice number exactly in title + name matches strongly = high confidence
+  // RULE: If invoice number exactly in title + (name OR NIP matches strongly) = high confidence
   // This handles cases where payment title explicitly mentions invoice number (e.g., "Faktura numer PS 95/11/2025")
   // Even if amount differs by up to 10% (could be interest, fees, partial payment, or invoice correction)
-  if (invoiceNumberScore >= 0.95 && nameScore >= 0.8 && amountScore >= 0.5) {
+  // NIP >= 0.9 can substitute for name match (organizational units may have different display names)
+  const nameOrNipStrongMatch = nameScore >= 0.8 || nipScore >= 0.9
+  if (invoiceNumberScore >= 0.95 && nameOrNipStrongMatch && amountScore >= 0.5) {
     const breakdown: MatchBreakdown = {
       subaccount: subaccountScore,
       amount: amountScore,
@@ -570,12 +580,16 @@ export function calculateMatchConfidence(
     }
 
     // Calculate adjusted confidence based on amount match
-    // Base 0.85 for exact invoice number + name, up to 0.95 based on amount closeness
+    // Base 0.85 for exact invoice number + name/NIP, up to 0.95 based on amount closeness
     const adjustedConfidence = 0.85 + (amountScore - 0.5) * 0.25 // 0.85-0.975 range
 
+    const identityReason = nipScore >= 0.9
+      ? (nameScore >= 0.8 ? 'Nazwa i NIP zgodne' : '✅ NIP potwierdza tożsamość')
+      : 'Nazwa nadawcy zgodna z nabywcą'
+
     if (debug) {
-      console.log(`   ✅ DOPASOWANIE PO NUMERZE FAKTURY: Nr faktury dokładnie + nazwa zgodna (kwota ${((1 - amountScore) * 100).toFixed(1)}% różnicy)`)
-      console.log(`      Confidence: ${adjustedConfidence.toFixed(2)}`)
+      console.log(`   ✅ DOPASOWANIE PO NUMERZE FAKTURY: Nr faktury dokładnie + (nazwa/NIP) zgodne (kwota ${((1 - amountScore) * 100).toFixed(1)}% różnicy)`)
+      console.log(`      Confidence: ${adjustedConfidence.toFixed(2)}, nameScore: ${nameScore.toFixed(2)}, nipScore: ${nipScore.toFixed(2)}`)
     }
 
     const amountDiff = payment.amount - invoice.gross_amount
@@ -588,7 +602,7 @@ export function calculateMatchConfidence(
       breakdown,
       reasons: [
         'Numer faktury dokładnie zgodny w tytule przelewu',
-        'Nazwa nadawcy zgodna z nabywcą',
+        identityReason,
         `Kwota: ${payment.amount.toFixed(2)} PLN (${amountDiffStr} PLN różnicy)`,
       ],
     }
