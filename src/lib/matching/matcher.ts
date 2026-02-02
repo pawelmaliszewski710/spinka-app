@@ -664,21 +664,32 @@ export function calculateMatchConfidence(
 
   let finalConfidence = Math.round(confidence * 100) / 100
 
-  // === BLOKADA: Nazwa musi pasować do auto-match ===
+  // === BLOKADA: Nazwa musi pasować do auto-match (z wyjątkiem gdy NIP pasuje) ===
   // Jeśli nazwa nadawcy NIE pasuje do nabywcy faktury (score < 0.5),
-  // NIGDY nie dawaj auto-match, nawet jeśli inne kryteria pasują
+  // NIGDY nie dawaj auto-match, nawet jeśli inne kryteria pasują.
+  // WYJĄTEK: Jeśli NIP pasuje (nipScore >= 0.9), to znaczy że to ta sama firma/jednostka
+  // (np. DOM POMOCY SPOŁECZNEJ KOMBATANT to jednostka MIASTA STOŁECZNEGO WARSZAWY)
+  // i blokada nie powinna być stosowana.
   const NAME_MATCH_THRESHOLD_FOR_AUTO = 0.5
-  if (nameScore < NAME_MATCH_THRESHOLD_FOR_AUTO && finalConfidence >= CONFIDENCE_THRESHOLDS.HIGH) {
+  const NIP_OVERRIDE_THRESHOLD = 0.9
+  if (nameScore < NAME_MATCH_THRESHOLD_FOR_AUTO && nipScore < NIP_OVERRIDE_THRESHOLD && finalConfidence >= CONFIDENCE_THRESHOLDS.HIGH) {
     // Obniż confidence poniżej progu auto-match
     const adjustedConfidence = CONFIDENCE_THRESHOLDS.HIGH - 0.01 // 0.84
 
     if (debug) {
-      console.log(`   ⚠️ BLOKADA: Nazwa nie pasuje (${nameScore.toFixed(2)} < 0.5)`)
+      console.log(`   ⚠️ BLOKADA: Nazwa nie pasuje (${nameScore.toFixed(2)} < 0.5) i NIP nie znaleziony`)
       console.log(`      Confidence obniżone: ${finalConfidence} → ${adjustedConfidence}`)
     }
 
     reasons.push('⚠️ Nazwa nadawcy nie zgadza się z nabywcą - wymaga weryfikacji')
     finalConfidence = adjustedConfidence
+  } else if (nameScore < NAME_MATCH_THRESHOLD_FOR_AUTO && nipScore >= NIP_OVERRIDE_THRESHOLD && finalConfidence >= CONFIDENCE_THRESHOLDS.HIGH) {
+    // NIP pasuje, więc pomijamy blokadę - to ta sama firma/jednostka mimo różnej nazwy
+    if (debug) {
+      console.log(`   ✅ POMIJAM BLOKADĘ NAZWY: NIP pasuje (${nipScore.toFixed(2)} >= 0.9)`)
+      console.log(`      Nazwa: ${nameScore.toFixed(2)} < 0.5, ale NIP potwierdza tożsamość`)
+    }
+    reasons.push('✅ NIP potwierdza tożsamość mimo różnej nazwy nadawcy')
   }
 
   if (debug) {
