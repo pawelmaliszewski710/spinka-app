@@ -541,14 +541,19 @@ export function compareCompanyNames(name1: string, name2: string): number {
   let normalized1 = normalizeString(name1)
   let normalized2 = normalizeString(name2)
 
+  // Remove punctuation FIRST so that "sp. z o.o." becomes "sp z o o" for suffix matching
+  normalized1 = normalized1.replace(/[.,-]/g, ' ').replace(/\s+/g, ' ').trim()
+  normalized2 = normalized2.replace(/[.,-]/g, ' ').replace(/\s+/g, ' ').trim()
+
+  // Then remove legal suffixes
   for (const suffix of suffixes) {
     normalized1 = normalized1.replace(new RegExp(`\\b${suffix}\\b`, 'g'), '').trim()
     normalized2 = normalized2.replace(new RegExp(`\\b${suffix}\\b`, 'g'), '').trim()
   }
 
-  // Also remove punctuation
-  normalized1 = normalized1.replace(/[.,-]/g, ' ').replace(/\s+/g, ' ').trim()
-  normalized2 = normalized2.replace(/[.,-]/g, ' ').replace(/\s+/g, ' ').trim()
+  // Clean up any leftover whitespace after suffix removal
+  normalized1 = normalized1.replace(/\s+/g, ' ').trim()
+  normalized2 = normalized2.replace(/\s+/g, ' ').trim()
 
   // Check for exact match after normalization
   if (normalized1 === normalized2) return 1
@@ -580,8 +585,19 @@ export function compareCompanyNames(name1: string, name2: string): number {
       }
     }
 
-    const totalWords = Math.max(words1.length, words2.length)
-    const wordMatchRatio = matchedWords / totalWords
+    const shorterLength = Math.min(words1.length, words2.length)
+    const longerLength = Math.max(words1.length, words2.length)
+    const wordMatchRatio = matchedWords / longerLength
+
+    // If ALL words from the shorter name match in the longer name,
+    // it's a strong match (handles case where sender name includes full address)
+    // Example: "Sales Development Technologies" vs "SALES DEVELOPMENT TECHNOLOGIES UL. KRAKOWIAKÓW 16 WARSZAWA"
+    const shorterMatchRatio = matchedWords / shorterLength
+
+    if (shorterMatchRatio >= 0.9 && shorterLength >= 2) {
+      // All core company words match, even if sender has extra address words
+      return 0.85
+    }
 
     // If most words match (regardless of order), it's a good match
     // Example: "JANOWSKI TOMASZ" vs "Tomasz Janowski" -> 2/2 = 1.0

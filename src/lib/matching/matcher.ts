@@ -104,8 +104,12 @@ function calculateInvoiceNumberScore(
   }
 
   // Combine title and extended_title for searching
+  // IMPORTANT: Use "; " as separator to prevent normalizePaymentTitle from merging
+  // the last digits of the title with the first digits of extended_title
+  // e.g., "PS 64/01/2026 911 Transakcja..." would become "PS 64/01/2026911..." (bad!)
+  // but "PS 64/01/2026; 911 Transakcja..." stays correct
   const rawSearchText = paymentExtendedTitle
-    ? `${paymentTitle} ${paymentExtendedTitle}`
+    ? `${paymentTitle}; ${paymentExtendedTitle}`
     : paymentTitle
 
   // Normalize payment title to remove bank-inserted spaces in invoice numbers
@@ -342,7 +346,7 @@ function paymentTitleContainsDifferentInvoice(
   extendedTitle?: string | null
 ): boolean {
   const searchText = normalizePaymentTitle(
-    extendedTitle ? `${paymentTitle} ${extendedTitle}` : paymentTitle
+    extendedTitle ? `${paymentTitle}; ${extendedTitle}` : paymentTitle
   )
 
   // Extract all invoice numbers from payment title
@@ -351,12 +355,23 @@ function paymentTitleContainsDifferentInvoice(
     return false // No invoice numbers in title - can't determine
   }
 
+  // IMPORTANT: Only consider extracted numbers that have an invoice-like prefix
+  // (PS, FV, FAK, FAKTURA, INV, etc.) to avoid false positives from dates
+  // like "data stempla: 28.01.2026" being interpreted as invoice "28/01/2026"
+  const invoicePrefixPattern = /(?:^|\b)(INV|PS|FV|FA|FAK|FAKT|FAKTURA)\b/i
+  const prefixedNumbers = extractedNumbers.filter(n => invoicePrefixPattern.test(n))
+
+  // If no prefixed numbers found, we can't reliably determine if title mentions a different invoice
+  if (prefixedNumbers.length === 0) {
+    return false
+  }
+
   // Get sequence and date from our invoice
   const ourSeq = extractSequenceNumber(invoiceNumber)
   const ourDate = extractDatePart(invoiceNumber)
 
-  // Check each extracted number - if ANY is a clearly different invoice, return true
-  for (const extracted of extractedNumbers) {
+  // Check each PREFIXED extracted number - if ANY is a clearly different invoice, return true
+  for (const extracted of prefixedNumbers) {
     const extractedSeq = extractSequenceNumber(extracted)
     const extractedDate = extractDatePart(extracted)
 
@@ -1292,9 +1307,10 @@ export function findPaymentForInvoiceSum(
 
     // Check if any invoice numbers are in payment title
     // Normalize to handle bank-inserted spaces (e.g., "PS 1 7/12/2025" → "PS 17/12/2025")
+    // Use "; " separator to prevent digit merging between title and extended_title
     const paymentText = normalizePaymentTitle(
       payment.extended_title
-        ? `${payment.title} ${payment.extended_title}`
+        ? `${payment.title}; ${payment.extended_title}`
         : payment.title
     )
 
@@ -1382,9 +1398,10 @@ export function findBuyerPaymentSuggestions(
 
     // Check if payment title doesn't explicitly reference a different invoice
     // Normalize to handle bank-inserted spaces (e.g., "PS 1 7/12/2025" → "PS 17/12/2025")
+    // Use "; " separator to prevent digit merging between title and extended_title
     const paymentText = normalizePaymentTitle(
       payment.extended_title
-        ? `${payment.title} ${payment.extended_title}`
+        ? `${payment.title}; ${payment.extended_title}`
         : payment.title
     )
 

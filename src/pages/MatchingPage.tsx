@@ -82,7 +82,7 @@ import {
 import { useMatching } from '@/hooks/useMatching'
 import { useFakturownia } from '@/hooks/useFakturownia'
 import { getMatchQuality } from '@/lib/matching'
-import type { GroupMatchSuggestion } from '@/types'
+import type { GroupMatchSuggestion, MatchSuggestion } from '@/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import { InvoiceAnalytics } from '@/components/analytics/InvoiceAnalytics'
@@ -147,6 +147,9 @@ export function MatchingPage(): React.JSX.Element {
 
   // State for unmatched invoice details dialog
   const [selectedUnmatchedInvoice, setSelectedUnmatchedInvoice] = useState<typeof unmatchedInvoices[number] | null>(null)
+
+  // State for suggestion details dialog
+  const [selectedSuggestionDetails, setSelectedSuggestionDetails] = useState<MatchSuggestion | null>(null)
 
   // Sorting state for tables
   type SortDirection = 'asc' | 'desc' | null
@@ -769,6 +772,7 @@ export function MatchingPage(): React.JSX.Element {
                                   onReject={() =>
                                     rejectSuggestion(suggestion.invoice.id, suggestion.payment.id)
                                   }
+                                  onView={() => setSelectedSuggestionDetails(suggestion)}
                                   isProcessing={isProcessing}
                                 />
                               ))}
@@ -1970,6 +1974,308 @@ export function MatchingPage(): React.JSX.Element {
             )}
           </DialogContent>
         </Dialog>
+        {/* Suggestion Details Dialog */}
+        <Dialog
+          open={selectedSuggestionDetails !== null}
+          onOpenChange={(open) => !open && setSelectedSuggestionDetails(null)}
+        >
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Search className="h-5 w-5" />
+                Szczegóły sugestii dopasowania
+              </DialogTitle>
+              <DialogDescription>
+                Analiza dopasowania faktury z płatnością
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedSuggestionDetails && (
+              <div className="space-y-6">
+                {/* Confidence badge */}
+                <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
+                  <div className="flex items-center gap-3">
+                    <Badge variant="secondary">Sugestia</Badge>
+                    <span className={`font-medium ${getMatchQuality(selectedSuggestionDetails.confidence).color}`}>
+                      Zgodność: {Math.round(selectedSuggestionDetails.confidence * 100)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Breakdown scores */}
+                {selectedSuggestionDetails.breakdown && (
+                  <div className="rounded-lg border p-4">
+                    <h4 className="mb-3 font-medium text-sm">Analiza kryteriów dopasowania</h4>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      {[
+                        { label: 'Kwota', score: selectedSuggestionDetails.breakdown.amount, weight: '30%' },
+                        { label: 'Nr faktury', score: selectedSuggestionDetails.breakdown.invoiceNumber, weight: '35%' },
+                        { label: 'Nazwa', score: selectedSuggestionDetails.breakdown.name, weight: '15%' },
+                        { label: 'NIP', score: selectedSuggestionDetails.breakdown.nip, weight: '10%' },
+                        { label: 'Data', score: selectedSuggestionDetails.breakdown.date, weight: '10%' },
+                        { label: 'Subkonto', score: selectedSuggestionDetails.breakdown.subaccount, weight: 'auto' },
+                      ].map(({ label, score, weight }) => (
+                        <div key={label} className="flex items-center justify-between rounded bg-muted/30 px-3 py-1.5">
+                          <span className="text-xs text-muted-foreground">{label} ({weight})</span>
+                          <span className={`text-sm font-mono font-medium ${
+                            score >= 0.9 ? 'text-green-600' :
+                            score >= 0.5 ? 'text-yellow-600' :
+                            score > 0 ? 'text-orange-600' :
+                            'text-muted-foreground'
+                          }`}>
+                            {Math.round(score * 100)}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Reasons */}
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedSuggestionDetails.reasons.map((reason, i) => (
+                    <span
+                      key={i}
+                      className="rounded-md bg-muted px-2.5 py-1 text-xs text-muted-foreground"
+                    >
+                      {reason}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="grid gap-6 md:grid-cols-2">
+                  {/* Invoice details */}
+                  <div className="rounded-lg border p-4">
+                    <div className="mb-4 flex items-center gap-2">
+                      <FileText className="h-5 w-5 text-blue-600" />
+                      <h3 className="font-semibold">Faktura</h3>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-2">
+                        <Hash className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Numer faktury</div>
+                          <div className="font-mono font-medium">{selectedSuggestionDetails.invoice.invoice_number}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-2">
+                        <Building2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Nabywca</div>
+                          <div className="font-medium">{selectedSuggestionDetails.invoice.buyer_name}</div>
+                          {selectedSuggestionDetails.invoice.buyer_nip && (
+                            <div className="text-sm text-muted-foreground">NIP: {selectedSuggestionDetails.invoice.buyer_nip}</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="flex items-start gap-2">
+                        <Banknote className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Kwota brutto</div>
+                          <div className="text-lg font-bold">
+                            {formatCurrency(selectedSuggestionDetails.invoice.gross_amount, selectedSuggestionDetails.invoice.currency)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {selectedSuggestionDetails.invoice.net_amount && (
+                        <div className="flex items-start gap-2">
+                          <div className="w-4" />
+                          <div>
+                            <div className="text-xs text-muted-foreground">Kwota netto</div>
+                            <div className="font-medium">
+                              {formatCurrency(selectedSuggestionDetails.invoice.net_amount, selectedSuggestionDetails.invoice.currency)}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <Separator />
+
+                      <div className="flex items-start gap-2">
+                        <Calendar className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Data wystawienia</div>
+                          <div>{formatDate(selectedSuggestionDetails.invoice.issue_date)}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-2">
+                        <Calendar className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Termin płatności</div>
+                          <div>{formatDate(selectedSuggestionDetails.invoice.due_date)}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-2">
+                        <Info className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Status</div>
+                          <Badge variant={selectedSuggestionDetails.invoice.payment_status === 'paid' ? 'default' : 'secondary'}>
+                            {selectedSuggestionDetails.invoice.payment_status === 'paid' ? 'Opłacona' :
+                             selectedSuggestionDetails.invoice.payment_status === 'overdue' ? 'Po terminie' : 'Oczekuje'}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="pt-2">
+                        <button
+                          onClick={() => copyToClipboard(selectedSuggestionDetails.invoice.id)}
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          ID: {selectedSuggestionDetails.invoice.id.slice(0, 12)}... <Copy className="inline h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment details */}
+                  <div className="rounded-lg border p-4">
+                    <div className="mb-4 flex items-center gap-2">
+                      <CreditCard className="h-5 w-5 text-green-600" />
+                      <h3 className="font-semibold">Płatność</h3>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-2">
+                        <User className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Nadawca</div>
+                          <div className="font-medium">{selectedSuggestionDetails.payment.sender_name}</div>
+                        </div>
+                      </div>
+
+                      {selectedSuggestionDetails.payment.sender_account && (
+                        <div className="flex items-start gap-2">
+                          <Hash className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <div className="text-xs text-muted-foreground">Numer konta</div>
+                            <div className="font-mono text-sm">{selectedSuggestionDetails.payment.sender_account}</div>
+                          </div>
+                        </div>
+                      )}
+
+                      <Separator />
+
+                      <div className="flex items-start gap-2">
+                        <Banknote className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Kwota</div>
+                          <div className="text-lg font-bold text-green-600">
+                            +{formatCurrency(selectedSuggestionDetails.payment.amount, selectedSuggestionDetails.payment.currency)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="flex items-start gap-2">
+                        <Calendar className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Data transakcji</div>
+                          <div>{formatDate(selectedSuggestionDetails.payment.transaction_date)}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-2">
+                        <FileText className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Tytuł przelewu</div>
+                          <div className="text-sm break-words">{selectedSuggestionDetails.payment.title}</div>
+                        </div>
+                      </div>
+
+                      {selectedSuggestionDetails.payment.reference && (
+                        <div className="flex items-start gap-2">
+                          <Info className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <div className="text-xs text-muted-foreground">Referencja</div>
+                            <div className="font-mono text-sm">{selectedSuggestionDetails.payment.reference}</div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="pt-2">
+                        <button
+                          onClick={() => copyToClipboard(selectedSuggestionDetails.payment.id)}
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          ID: {selectedSuggestionDetails.payment.id.slice(0, 12)}... <Copy className="inline h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Comparison summary */}
+                <div className="rounded-lg bg-muted/30 p-4">
+                  <h4 className="mb-3 font-medium">Porównanie kwot</h4>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Faktura (brutto)</div>
+                      <div className="text-lg font-semibold">
+                        {formatCurrency(selectedSuggestionDetails.invoice.gross_amount, selectedSuggestionDetails.invoice.currency)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Płatność</div>
+                      <div className="text-lg font-semibold text-green-600">
+                        {formatCurrency(selectedSuggestionDetails.payment.amount, selectedSuggestionDetails.payment.currency)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Różnica</div>
+                      {(() => {
+                        const diff = selectedSuggestionDetails.payment.amount - selectedSuggestionDetails.invoice.gross_amount
+                        const isExact = Math.abs(diff) < 0.01
+                        return (
+                          <div className={`text-lg font-semibold ${isExact ? 'text-green-600' : diff > 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                            {isExact ? '✓ Dokładne' : (diff > 0 ? '+' : '') + formatCurrency(diff, selectedSuggestionDetails.invoice.currency)}
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedSuggestionDetails(null)}
+                  >
+                    Zamknij
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      rejectSuggestion(selectedSuggestionDetails.invoice.id, selectedSuggestionDetails.payment.id)
+                      setSelectedSuggestionDetails(null)
+                    }}
+                    disabled={isProcessing}
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    Odrzuć
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      confirmMatch(selectedSuggestionDetails.invoice.id, selectedSuggestionDetails.payment.id)
+                      setSelectedSuggestionDetails(null)
+                    }}
+                    disabled={isProcessing}
+                  >
+                    <Check className="mr-2 h-4 w-4" />
+                    Potwierdź dopasowanie
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </PageContainer>
   )
@@ -2036,6 +2342,7 @@ interface SuggestionCardProps {
   }
   onConfirm: () => void
   onReject: () => void
+  onView?: () => void
   isProcessing: boolean
 }
 
@@ -2043,12 +2350,20 @@ function SuggestionCard({
   suggestion,
   onConfirm,
   onReject,
+  onView,
   isProcessing,
 }: SuggestionCardProps): React.JSX.Element {
   const quality = getMatchQuality(suggestion.confidence)
 
   return (
-    <div className="rounded-lg border p-4">
+    <div
+      className="rounded-lg border p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+      onClick={(e) => {
+        // Don't trigger view when clicking buttons
+        if ((e.target as HTMLElement).closest('button')) return
+        onView?.()
+      }}
+    >
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <div className="flex items-center gap-4">
